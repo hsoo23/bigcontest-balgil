@@ -30,13 +30,12 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from balgil.data import PROCESSED_DIR
-from balgil.features import resident_only
+from balgil.features import STAY_STORE_MID, resident_only
 
 pd.set_option("display.width", 240)
 
-# 카드의 '체류' 정의(scripts/explore_quality.py)와 성격을 맞춘 상가정보 중분류.
-# 상가정보는 중분류명 일부에 뒤쪽 공백이 있어 비교 전에 strip()이 필요하다.
-STAY_MID = ["비알코올", "이용·미용", "욕탕·신체관리", "스포츠 서비스", "유원지·오락", "주점", "도서관·사적지"]
+# 체류형 중분류는 features.py로 옮겼다(C2). 식사·장보기 중분류는 여기서만 쓴다.
+STAY_MID = STAY_STORE_MID
 MEAL_MID = ["한식", "중식", "일식", "서양식", "기타 간이", "구내식당·뷔페", "동남아시아", "기타 외국"]
 GROC_MID = ["종합 소매", "식료품 소매", "음료 소매", "담배 소매"]
 OLD_PATTERN = "음식|주점|커피|체육|여가|미용|스포츠"  # 고치기 전 features.py가 쓰던 것
