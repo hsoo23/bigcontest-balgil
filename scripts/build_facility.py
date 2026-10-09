@@ -1,0 +1,107 @@
+"""시설 표준데이터 3종의 좌표를 행정동에 연결하고 동별 시설 수를 센다 (C3).
+
+자원 데이터(복지로·1365)는 시군구 이상이라 "어느 동에 무엇이 있나"를 말할 수 없다
+(explore_external.py 1절). 좌표가 있는 시설 표준데이터로 터전의 동 단위 자원을 채운다.
+
+원본: 공공데이터포털 표준데이터 페이지의 "파일 내려받기(CSV)". 전국 파일 그대로 둔다.
+  data/external/fac_senior_center/  전국마을회관및경로당표준데이터 (15114136)
+  data/external/fac_welfare/        전국사회복지시설표준데이터     (15096296, 노인복지관 포함)
+  data/external/fac_library/        전국도서관표준데이터           (15013109)
+
+정제 규칙
+  * 인코딩은 UTF-8을 먼저 시도하고 안 되면 cp949로 읽는다 (포털 파일마다 다르다)
+  * 위도·경도가 비었거나 0인 시설은 버리고 개수를 출력한다
+  * 대상 지역 필터는 주소가 아니라 경계 공간 조인으로 한다. 경계 밖 좌표는 자연히 빠진다
+
+선행: build_spatial.py (dong_master와 같은 SGIS 경계를 쓴다)
+실행: python scripts/build_facility.py
+산출: data/processed/fac_adm.parquet  (시설 단위, ADM_CD 포함)
+      data/processed/fac_dong.parquet (47개 동 × 시설 종류별 개수)
+"""
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+import geopandas as gpd
+import pandas as pd
+
+from balgil.data import PROCESSED_DIR, ROOT
+from build_spatial import load_dong
+
+EXTERNAL_DIR = ROOT / "data" / "external"
+SOURCES = {"fac_senior_center": "경로당", "fac_welfare": "복지시설", "fac_library": "도서관"}
+NAME_COLS = ["시설명", "도서관명", "경로당명"]
+TYPE_COLS = ["시설구분", "시설종류명", "시설종류상세명", "시설유형", "도서관유형"]
+
+
+def _read(path: Path) -> pd.DataFrame:
+    for enc in ("utf-8-sig", "cp949"):
+        try:
+            return pd.read_csv(path, encoding=enc, dtype=str, low_memory=False)
+        except UnicodeDecodeError:
+            continue
+    raise SystemExit(f"인코딩을 읽지 못했습니다: {path}")
+
+
+def _first(df: pd.DataFrame, candidates: list[str]) -> str | None:
+    return next((c for c in candidates if c in df.columns), None)
+
+
+def load_source(slug: str, kind: str) -> pd.DataFrame:
+    files = sorted((EXTERNAL_DIR / slug).glob("*.csv"))
+    if not files:
+        print(f"[{kind}] 원본 없음: data/external/{slug}/*.csv — 건너뜁니다")
+        return pd.DataFrame()
+    raw = pd.concat([_read(p) for p in files], ignore_index=True)
+
+    name, typ = _first(raw, NAME_COLS), _first(raw, TYPE_COLS)
+    if name is None or not {"위도", "경도"} <= set(raw.columns):
+        raise SystemExit(f"[{kind}] 시설명·위도·경도 열을 찾지 못했습니다. 실제 열: {list(raw.columns)}")
+
+    out = pd.DataFrame({
+        "시설종류": kind,
+        "시설명": raw[name],
+        "세부유형": raw[typ] if typ else pd.NA,
+        "위도": pd.to_numeric(raw["위도"], errors="coerce"),
+        "경도": pd.to_numeric(raw["경도"], errors="coerce"),
+    })
+    bad = out["위도"].isna() | out["경도"].isna() | (out["위도"] == 0) | (out["경도"] == 0)
+    print(f"[{kind}] 전국 {len(out):,}개, 좌표 없음 {bad.sum():,}개 제외 (세부유형 열: {typ or '없음'})")
+    return out[~bad]
+
+
+def main() -> None:
+    dong = load_dong()
+    frames = [load_source(slug, kind) for slug, kind in SOURCES.items()]
+    fac = pd.concat([f for f in frames if not f.empty], ignore_index=True)
+    if fac.empty:
+        raise SystemExit("시설 원본이 하나도 없습니다.")
+
+    pts = gpd.GeoDataFrame(fac, geometry=gpd.points_from_xy(fac["경도"], fac["위도"]), crs="EPSG:4326").to_crs(dong.crs)
+    sj = gpd.sjoin(pts, dong[["ADM_CD", "ADM_NM", "SGG_NM", "geometry"]], how="inner", predicate="within")
+    sj = pd.DataFrame(sj.drop(columns=["geometry", "index_right"]))
+
+    print(f"\n■ 대상 지역 안 시설 {len(sj):,}개")
+    print(sj.groupby(["SGG_NM", "시설종류"]).size().unstack(fill_value=0).to_string())
+    if sj["세부유형"].notna().any():
+        print("\n■ 세부유형 (복지시설은 노인복지 계열만 터전에 쓸지 결정 필요)")
+        print(sj.groupby(["시설종류", "세부유형"]).size().to_string())
+
+    counts = sj.groupby(["ADM_CD", "시설종류"]).size().unstack(fill_value=0).add_suffix("수")
+    by_dong = dong[["SGG_NM", "ADM_CD", "ADM_NM"]].merge(counts, on="ADM_CD", how="left").fillna(0)
+    num = [c for c in by_dong.columns if c.endswith("수")]
+    by_dong[num] = by_dong[num].astype(int)
+    zero = by_dong[by_dong[num].sum(axis=1) == 0]
+    print(f"\n■ 동 {len(by_dong)}개 중 시설이 하나도 없는 동 {len(zero)}개"
+          + (f": {', '.join(zero['ADM_NM'])}" if len(zero) else ""))
+
+    sj.to_parquet(PROCESSED_DIR / "fac_adm.parquet", index=False)
+    by_dong.to_parquet(PROCESSED_DIR / "fac_dong.parquet", index=False)
+    print("\n저장: data/processed/fac_adm.parquet, fac_dong.parquet")
+
+
+if __name__ == "__main__":
+    main()

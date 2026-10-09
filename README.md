@@ -40,10 +40,20 @@ pip install -r requirements.txt
 data/raw/card/신한카드_빅콘테스트2026_데이터1.txt        # 일자 × 6시간대
 data/raw/card/신한카드_빅콘테스트2026_데이터2_수정.txt   # 일자 × 고객 거주 시도 (수정본)
 data/raw/sk/flow_{age,time,wkdy}_pop_2025{07..12}.csv   # SK 통신인구
-data/raw/kma/                                            # 기상청 ASOS 일자료 (현수)
-data/raw/facility/                                       # 시설 표준데이터 3종 (현수)
-data/raw/mois/                                           # 행안부 1인세대 (윤지)
 data/raw/docs/                                           # 주제설명자료, 테이블 정의서
+```
+
+외부 데이터는 `data/raw/`가 아니라 **`data/external/<슬러그>/`**에 원본 그대로 둡니다. 스크립트가 이 경로를 읽고, 출처는 같은 폴더의 `meta.json`에 남깁니다(`python scripts/register_external.py --init <슬러그>`).
+
+```
+data/external/sgis_boundary/bnd_dong_00_2025_2Q.shp     # SGIS 행정동 경계 (전 데이터 연결 기준표)
+data/external/sbiz_store/*.csv                          # 소상공인 상가(상권)정보 (현수)
+data/external/kma_asos/*.csv                            # 기상청 ASOS 일자료 서울108·춘천101 (현수)
+data/external/fac_senior_center/*.csv                   # 전국마을회관및경로당표준데이터 (현수)
+data/external/fac_welfare/*.csv                         # 전국사회복지시설표준데이터 (현수)
+data/external/fac_library/*.csv                        # 전국도서관표준데이터 (현수)
+data/external/mois_single_household/*.csv              # 행안부 1인세대 (윤지)
+data/external/mois_population/*.csv                    # 행안부 주민등록 인구 (윤지)
 ```
 
 받아야 할 데이터와 담당·기한은 [`docs/실행계획.md`](docs/실행계획.md) 6절에 있습니다.
@@ -54,12 +64,15 @@ data/raw/docs/                                           # 주제설명자료, �
 python scripts/build_processed.py     # 제공 데이터 정제 → data/processed/*.parquet
 python scripts/build_external.py      # 외부 데이터 정제
 python scripts/build_spatial.py       # 행정동 기준으로 전 데이터 연결
+python scripts/build_dong_code.py     # 47개 동 코드 대조표 → data/processed/dong_code.csv (C1)
+python scripts/build_facility.py      # 시설 3종 좌표 → 행정동, 동별 시설 수 (C3)
+python scripts/build_weather.py       # ASOS 일자 × 시군구 기상 테이블 (B4)
 python scripts/build_features.py      # 지표 산출
 ```
 
 정제 규칙은 `src/balgil/data.py`, 지표 정의는 `src/balgil/features.py`에 모여 있습니다.
 
-> **주의**: `features.py`에 알려진 버그가 두 개 있습니다 — `주류판매`가 두 분류에 중복(A3, 수경), 상가 패턴이 커피 2,950개 누락(C2, 현수). 10/11까지 각자 고칩니다.
+> **주의**: `features.py`에 알려진 버그가 두 개 있습니다 — `주류판매`가 두 분류에 중복(A3, 수경), 상가 패턴이 체류형 점포 4,547개 누락(커피 2,950 + 욕탕·유원지·도서관, C2, 현수 — `track-c`에서 수정). 10/11까지 각자 고칩니다.
 
 ## 검증 스크립트
 
