@@ -3,7 +3,7 @@
 대회 규정상 외부 데이터는 무료·공개 데이터만 사용할 수 있고(유료 데이터 사용 시 수상 취소),
 출처와 수집 방법을 명시하고 활용한 원본 파일을 함께 제출해야 합니다.
 
-- 원본 파일은 가공 없이 `data/external/<슬러그>/`에 보관합니다. (`data/`는 git에 올리지 않습니다)
+- 원본 파일은 가공 없이 `data/external/<슬러그>/`에 보관하고 **git에 함께 올립니다** (제공 데이터 `data/raw/`는 올리지 않습니다)
 - 출처는 같은 폴더의 `meta.json`에 기록합니다. `python scripts/register_external.py --init <슬러그>`로 템플릿을 만듭니다.
 - 아래 표는 `python scripts/register_external.py` 실행 시 자동으로 갱신됩니다.
 
