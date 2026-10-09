@@ -45,6 +45,8 @@ data/raw/docs/                                           # 주제설명자료, �
 
 외부 데이터는 `data/raw/`가 아니라 **`data/external/<슬러그>/`**에 원본 그대로 둡니다. 스크립트가 이 경로를 읽고, 출처는 같은 폴더의 `meta.json`에 남깁니다(`python scripts/register_external.py --init <슬러그>`).
 
+**`sgis_boundary`와 `sbiz_store`는 원본이 100MB를 넘어 git에 올리지 않습니다.** 받는 곳과 방법은 각 폴더의 `meta.json`에 있으니 각자 받아 같은 폴더에 둡니다.
+
 ```
 data/external/sgis_boundary/bnd_dong_00_2025_2Q.shp     # SGIS 행정동 경계 (전 데이터 연결 기준표)
 data/external/sbiz_store/*.csv                          # 소상공인 상가(상권)정보 (현수)

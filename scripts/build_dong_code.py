@@ -38,6 +38,9 @@ def sk_codes() -> pd.DataFrame:
 
 def mois_codes() -> pd.DataFrame:
     """행안부 행정기관코드. build_spatial.link_mois()가 이름으로 붙인 ADM_CD를 쓴다."""
+    if not (PROCESSED_DIR / "ext_single_household.parquet").exists():
+        print("[행안부] ext_single_household.parquet 없음 — MOIS_CD를 비워 두고 진행합니다")
+        return pd.DataFrame(columns=["ADM_CD", "MOIS_CD", "MOIS_NM"])
     hh = pd.read_parquet(PROCESSED_DIR / "ext_single_household.parquet", columns=["ADM_CD", "읍면동명", "행정기관코드"])
     hh = hh.dropna(subset=["ADM_CD"]).drop_duplicates(["ADM_CD", "행정기관코드"])
     hh["행정기관코드"] = hh["행정기관코드"].astype("int64").astype(str)
@@ -58,9 +61,11 @@ def store_codes() -> pd.DataFrame:
 
 def main() -> None:
     dong = pd.read_parquet(PROCESSED_DIR / "dong_master.parquet")[["SGG_NM", "ADM_CD", "ADM_NM"]]
+    mois = mois_codes()
+    mois_loaded = not mois.empty
     out = (
         dong.merge(sk_codes(), on="ADM_CD", how="left")
-        .merge(mois_codes(), on="ADM_CD", how="left")
+        .merge(mois, on="ADM_CD", how="left")
         .merge(store_codes(), on="ADM_CD", how="left")
         .sort_values(["SGG_NM", "ADM_CD"])
         .astype({"SK_격자수": "Int64", "점포수": "Int64"})
@@ -74,7 +79,7 @@ def main() -> None:
             n.append("SK 격자 없음")
         if isinstance(r.SK_옛코드, str):
             n.append(f"SK 옛 코드 {r.SK_옛코드}를 좌표로 보완")
-        if pd.isna(r.MOIS_CD):
+        if pd.isna(r.MOIS_CD) and mois_loaded:
             n.append("행안부 미매칭")
         if pd.isna(r.STORE_CD):
             n.append("상가 점포 없음")

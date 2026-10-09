@@ -1,7 +1,14 @@
-data/
+data/*
+!data/external/
 __pycache__/
 *.pyc
 .venv/
 .env
 .ipynb_checkpoints/
 .DS_Store
+
+# GitHub 파일 한도(100MB)를 넘는 외부 원본은 올리지 않고 meta.json(출처·받는 법)만 올린다.
+data/external/sgis_boundary/*
+!data/external/sgis_boundary/meta.json
+data/external/sbiz_store/*
+!data/external/sbiz_store/meta.json
