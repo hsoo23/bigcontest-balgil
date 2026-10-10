@@ -7,7 +7,7 @@
   관계 자원  : 1인세대율 — 행안부, 행정동 단위
   소비 결핍  : 사회적 소비 비중과 대조군 대비 격차 — 카드, 시군구 단위
   또래·활동  : 동별 5060 유동인구 비중, 야간 활동 비중, 주말 유동비 — SK, 행정동 단위
-  인프라     : 관계형 점포 수와 인구 대비 밀도 — 상가정보, 행정동 단위
+  인프라     : 체류형 점포 수와 인구 대비 밀도 — 상가정보, 행정동 단위
 
 주의: 카드 데이터의 공간 단위는 시군구 2개뿐이다. 카드 기반 지표는 같은 시군구의
 행정동에 동일한 값이 부여되며, 행정동 간 차이는 유동인구·1인세대·인프라 지표가 만든다.
@@ -28,12 +28,12 @@ from balgil.data import PROCESSED_DIR
 from balgil.features import (
     CONTROL_AGES,
     NIGHT_HOURS,
-    SOCIAL_STORE_PATTERN,
     TARGET_AGES,
     WEEKDAY_FLOW,
     WEEKEND_FLOW,
     classify_mct,
     gap_to_control,
+    is_stay_store,
     resident_only,
 )
 
@@ -114,9 +114,9 @@ def dong_static() -> pd.DataFrame:
     hh["일인세대율"] = hh["일인세대율"] * 100
 
     store = pd.read_parquet(PROCESSED_DIR / "store_adm.parquet")
-    social = store[store["상권업종중분류명"].str.contains(SOCIAL_STORE_PATTERN, na=False)]
+    stay = store[is_stay_store(store)]
     infra = pd.DataFrame(
-        {"점포수": store.groupby("ADM_CD").size(), "관계형점포수": social.groupby("ADM_CD").size()}
+        {"점포수": store.groupby("ADM_CD").size(), "체류형점포수": stay.groupby("ADM_CD").size()}
     ).fillna(0).reset_index()
     return hh.merge(infra, on="ADM_CD", how="left")
 
@@ -131,7 +131,7 @@ def main() -> None:
         .merge(weekday, on=["SGG_NM", "STD_YM", "SEX_CCD", "AGE_CCD"], how="left")
         .merge(static, on=["ADM_CD", "SEX_CCD", "AGE_CCD"], how="left")
     )
-    features["관계형점포_대상천명당"] = features["관계형점포수"] / features["인구수"] * 1000  # 해당 성·연령 인구 1,000명당
+    features["체류형점포_대상천명당"] = features["체류형점포수"] / features["인구수"] * 1000  # 해당 성·연령 인구 1,000명당
     features["대상여부"] = features["AGE_CCD"].isin(TARGET_AGES)
 
     features.to_parquet(PROCESSED_DIR / "features_dong.parquet", index=False)
@@ -140,7 +140,7 @@ def main() -> None:
     missing = features.isna().sum()
     print("결측:", missing[missing > 0].to_dict() or "없음")
 
-    cols = ["평일주말비_대조군격차", "사회적소비_대조군격차", "일인세대율", "관계형점포_대상천명당", "야간활동비중"]
+    cols = ["평일주말비_대조군격차", "사회적소비_대조군격차", "일인세대율", "체류형점포_대상천명당", "야간활동비중"]
     print("\n■ 5060 지표 요약 (2025-12)")
     view = features[(features["대상여부"]) & (features["STD_YM"] == "202512")]
     print(view.groupby(["SGG_NM", "SEX_CCD", "AGE_CCD"])[cols].mean().round(2).to_string())
