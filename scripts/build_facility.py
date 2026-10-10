@@ -10,7 +10,8 @@
 
 정제 규칙
   * 인코딩은 UTF-8을 먼저 시도하고 안 되면 cp949로 읽는다 (포털 파일마다 다르다)
-  * 위도·경도가 비었거나 0인 시설은 버리고 개수를 출력한다
+  * 폐업 시설은 뺀다(휴업은 남긴다). 위도·경도가 뒤바뀐 행은 바로잡고,
+    국내 좌표 범위를 벗어나거나 비어 있는 행은 버리고 목록을 출력한다
   * 대상 지역 필터는 주소가 아니라 경계 공간 조인으로 한다. 경계 밖 좌표는 자연히 빠진다
 
 선행: build_spatial.py (dong_master와 같은 SGIS 경계를 쓴다)
@@ -35,6 +36,7 @@ EXTERNAL_DIR = ROOT / "data" / "external"
 SOURCES = {"fac_senior_center": "경로당", "fac_welfare": "복지시설", "fac_library": "도서관"}
 NAME_COLS = ["시설명", "도서관명", "경로당명"]
 TYPE_COLS = ["시설구분", "시설종류명", "시설종류상세명", "시설유형", "도서관유형"]
+LAT_RANGE, LON_RANGE = (33.0, 39.0), (124.0, 132.0)  # 국내 좌표 범위
 
 
 def _read(path: Path) -> pd.DataFrame:
@@ -68,8 +70,21 @@ def load_source(slug: str, kind: str) -> pd.DataFrame:
         "위도": pd.to_numeric(raw["위도"], errors="coerce"),
         "경도": pd.to_numeric(raw["경도"], errors="coerce"),
     })
-    bad = out["위도"].isna() | out["경도"].isna() | (out["위도"] == 0) | (out["경도"] == 0)
-    print(f"[{kind}] 전국 {len(out):,}개, 좌표 없음 {bad.sum():,}개 제외 (세부유형 열: {typ or '없음'})")
+    n_all = len(out)
+    if "영업상태명" in raw.columns:
+        closed = raw["영업상태명"].eq("폐업")
+        out = out[~closed]
+        print(f"[{kind}] 폐업 {closed.sum():,}개 제외 (휴업은 남김)")
+
+    # 위도·경도가 뒤바뀐 행은 바로잡고, 그래도 국내 범위 밖인 행은 버린다.
+    # (경로당 표준데이터에 경도 칸에 위도 값이 그대로 들어간 행이 있다 — 강남 자곡·방죽1·은곡)
+    swapped = out["위도"].between(*LON_RANGE) & out["경도"].between(*LAT_RANGE)
+    out.loc[swapped, ["위도", "경도"]] = out.loc[swapped, ["경도", "위도"]].to_numpy()
+    bad = ~(out["위도"].between(*LAT_RANGE) & out["경도"].between(*LON_RANGE))
+    print(f"[{kind}] 전국 {n_all:,}개, 위경도 뒤바뀜 {swapped.sum():,}개 바로잡음, 좌표 오류·없음 {bad.sum():,}개 제외 "
+          f"(세부유형 열: {typ or '없음'})")
+    if bad.any():
+        print(out.loc[bad, ["시설명", "위도", "경도"]].head(10).to_string(index=False))
     return out[~bad]
 
 
