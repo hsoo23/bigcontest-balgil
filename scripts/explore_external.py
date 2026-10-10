@@ -30,13 +30,11 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from balgil.data import PROCESSED_DIR
-from balgil.features import resident_only
+from balgil.features import STAY_STORE_SUB, is_stay_store, resident_only
 
 pd.set_option("display.width", 240)
 
-# 카드의 '체류' 정의(scripts/explore_quality.py)와 성격을 맞춘 상가정보 중분류.
-# 상가정보는 중분류명 일부에 뒤쪽 공백이 있어 비교 전에 strip()이 필요하다.
-STAY_MID = ["비알코올", "이용·미용", "욕탕·신체관리", "스포츠 서비스", "유원지·오락", "주점", "도서관·사적지"]
+# 체류형 판정은 features.py의 is_stay_store()로 옮겼다(C2). 식사·장보기 중분류는 여기서만 쓴다.
 MEAL_MID = ["한식", "중식", "일식", "서양식", "기타 간이", "구내식당·뷔페", "동남아시아", "기타 외국"]
 GROC_MID = ["종합 소매", "식료품 소매", "음료 소매", "담배 소매"]
 OLD_PATTERN = "음식|주점|커피|체육|여가|미용|스포츠"  # 고치기 전 features.py가 쓰던 것
@@ -88,12 +86,17 @@ def recount_stay_stores() -> pd.DataFrame:
     s = pd.read_parquet(PROCESSED_DIR / "store_adm.parquet")
     s["중"] = s["상권업종중분류명"].str.strip()
 
-    new = s[s["중"].isin(STAY_MID)]
+    new = s[is_stay_store(s)]
     old = s[s["중"].str.contains(OLD_PATTERN, na=False)]
     print(f"  새 정의 {len(new):,}개 / 기존 패턴 {len(old):,}개  (차이 {len(new) - len(old):,}개)")
     print(new["중"].value_counts().to_string())
     print("\n  기존 패턴은 '커피'로 찾았으나 상가정보 중분류명은 '비알코올 '이다.")
     print("  뒤쪽 공백까지 있어 strip() 없이는 isin()으로도 안 걸린다.\n")
+
+    fun = s[s["중"] == "유원지·오락"]
+    print(f"  유원지·오락 {len(fun):,}개 중 소분류 {STAY_STORE_SUB}만 체류형 (이슈 #8 D안, 카드 체류와 맞춤)")
+    print(fun["상권업종소분류명"].str.strip().value_counts().to_string())
+    print()
 
     pop = elderly_population()
     cnt = new.groupby("ADM_CD").size().rename("체류점포")
@@ -105,7 +108,7 @@ def recount_stay_stores() -> pd.DataFrame:
     print(m[m["ADM_NM"] == "북산면"][["ADM_NM", "인구수", "기존_관계형", "체류점포", "천명당"]].to_string(index=False))
     zero = m[m["체류점포"] == 0]
     print(f"  체류형 점포가 실제로 0개인 동: {'없음' if zero.empty else ', '.join(zero['ADM_NM'])}")
-    print("  → '0개'는 패턴이 만든 값이었다. 보고서에서 '20~200배 격차'로 바꿔야 한다.\n")
+    print("  → '0개'는 패턴이 만든 값이었다. 보고서의 격차 배수 표현은 10/17 수치 동결 때 확정한다.\n")
 
     for sgg in SGGS:
         d = m[m["SGG_NM"] == sgg].sort_values("천명당")
@@ -113,7 +116,7 @@ def recount_stay_stores() -> pd.DataFrame:
         print(f"  [{sgg}] 60세+ 천 명당 체류형 점포 — 중위 {d['천명당'].median():.1f}, 변동계수 {cv:.2f}")
         print("    하위3:", ", ".join(f"{r.ADM_NM} {r.천명당}" for r in d.head(3).itertuples()))
         print("    상위3:", ", ".join(f"{r.ADM_NM} {r.천명당}" for r in d.tail(3).itertuples()))
-    print("  → 강남 개포1동(1.4)이 춘천 농촌(8.2)보다 낮다. 터전 사막은 도시에도 있다.\n")
+    print("  → 강남 개포1동(1.4)이 춘천 농촌(사북면 4.1)보다도 낮다. 터전 사막은 도시에도 있다.\n")
     return m
 
 
