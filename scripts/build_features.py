@@ -52,7 +52,8 @@ def card_consumption() -> pd.DataFrame:
     card["STD_YM"] = card["TA_YMD"].dt.strftime("%Y%m")
 
     grp = card.groupby(["MCT_SGG_CD", "STD_YM", "SEX_CCD", "AGE_CCD", "소비유형"])["USE_CNT"].sum().unstack(fill_value=0)
-    out = (grp.div(grp.sum(axis=1), axis=0)[["체류", "식사", "익명"]] * 100).reset_index()
+    share = grp.div(grp.sum(axis=1), axis=0).reindex(columns=["체류", "식사", "익명"], fill_value=0)  # 일부만 떼어 돌릴 때 빈 분류 대비
+    out = (share * 100).reset_index()
     out.columns = ["SGG_NM", "STD_YM", "SEX_CCD", "AGE_CCD", "체류비중", "식사비중", "익명비중"]
     out["체류비중_대조군격차"] = gap_to_control(out, "체류비중", ["SGG_NM", "STD_YM", "SEX_CCD"])
     return out
