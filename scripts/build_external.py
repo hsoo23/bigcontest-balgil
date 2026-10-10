@@ -14,6 +14,7 @@
 """
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -25,14 +26,50 @@ from balgil.data import PROCESSED_DIR, ROOT
 
 EXTERNAL_DIR = ROOT / "data" / "external"
 TARGET_SGG_NM = {"강남구": "서울 강남구", "춘천시": "강원 춘천시"}
+AGE_RANGE = range(0, 101)  # 원본 CSV의 1세 단위 열 범위
 AGE_BANDS = {"30대": range(30, 40), "40대": range(40, 50), "50대": range(50, 60), "60대": range(60, 70), "70대이상": range(70, 111)}
 
 
 def _read_mois(slug: str) -> pd.DataFrame:
-    """행안부 행정동 x 성별 x 1세 단위 통계를 대상 지역만 읽는다."""
-    src = next((EXTERNAL_DIR / slug).glob("*.csv"))
-    raw = pd.read_csv(src, encoding="cp949", thousands=",")
-    return raw[raw["시군구명"].isin(TARGET_SGG_NM)].reset_index(drop=True)
+    """행안부 행정동 x 성별 x 1세 단위 통계를 대상 지역만 읽는다.
+
+    jumin.mois.go.kr의 CSV는 한 행이 한 행정동이고, 지역이 `행정구역` 한 칸에
+    "서울특별시 강남구 신사동(1168051000)" 형태로 들어 있다. 값 컬럼은
+    `2025년12월_남_65세`처럼 기간·성별·나이가 이름에 붙어 있다.
+    여기서 그 둘을 풀어 `시도명/시군구명/읍면동명/행정기관코드` + `65세남자` 꼴로 바꾼다.
+    원본은 가공하지 않고 읽는 쪽에서 맞춘다 — 규정상 활용한 원본 파일을 그대로 제출한다.
+    """
+    frames = []
+    for src in sorted((EXTERNAL_DIR / slug).glob("*.csv")):
+        raw = pd.read_csv(src, encoding="cp949", thousands=",")
+        region = raw["행정구역"].astype(str).str.strip()
+        parsed = region.str.extract(r"^(?P<이름>.*?)\s*\((?P<행정기관코드>\d+)\)$")
+        parts = parsed["이름"].str.split(r"\s+", expand=True)
+        out = pd.DataFrame({
+            "시도명": parts[0],
+            "시군구명": parts[1] if parts.shape[1] > 1 else pd.NA,
+            "읍면동명": parts[2] if parts.shape[1] > 2 else pd.NA,
+            "행정기관코드": parsed["행정기관코드"],
+        })
+        # 시군구 합계 행(읍면동 없음)은 버린다. 동 단위만 쓴다.
+        keep = out["읍면동명"].notna()
+        values = {}
+        for col in raw.columns[1:]:
+            m = re.fullmatch(r"\d{4}년\d{2}월_(계|남|여)_(\d{1,3})세( 이상)?", col)
+            if not m:
+                continue
+            sex = {"남": "남자", "여": "여자", "계": "계"}[m.group(1)]
+            # errors="coerce"로 넘기면 형식이 바뀐 달의 자료가 결측이 되고,
+            # 아래 sum()이 결측을 건너뛰어 조용히 작은 값이 나온다. 바로 멈춘다.
+            values[f"{m.group(2)}세{sex}"] = pd.to_numeric(raw[col], errors="raise")
+        # 계·남·여 x 0~100세 = 303개. 열 이름 형식이 바뀌면 정규식이 안 맞고
+        # _by_band()가 빈 열 목록을 더해 0을 돌려주므로, 여기서 먼저 확인한다.
+        if len(values) != 3 * len(AGE_RANGE):
+            raise ValueError(f"{src.name}: 값 열이 {len(values)}개다. {3 * len(AGE_RANGE)}개를 기대했다")
+        out = pd.concat([out, pd.DataFrame(values)], axis=1)
+        frames.append(out[keep])
+    both = pd.concat(frames, ignore_index=True)
+    return both[both["시군구명"].isin(TARGET_SGG_NM)].reset_index(drop=True)
 
 
 def _by_band(raw: pd.DataFrame, value_name: str) -> pd.DataFrame:
@@ -40,6 +77,8 @@ def _by_band(raw: pd.DataFrame, value_name: str) -> pd.DataFrame:
     for band, ages in AGE_BANDS.items():
         for sex, suffix in (("남성", "남자"), ("여성", "여자")):
             cols = [f"{a}세{suffix}" for a in ages if f"{a}세{suffix}" in raw.columns]
+            if not cols:
+                raise ValueError(f"{band} {sex}에 해당하는 열이 없다. 열 이름 형식을 확인하라")
             rows.append(
                 raw[["시도명", "시군구명", "읍면동명", "행정기관코드"]]
                 .assign(성별=sex, 연령대=band, **{value_name: raw[cols].sum(axis=1)})
