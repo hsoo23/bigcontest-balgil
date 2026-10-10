@@ -92,9 +92,13 @@ def link_store(dong: gpd.GeoDataFrame) -> pd.DataFrame:
     return sj
 
 
-def link_mois(dong: gpd.GeoDataFrame) -> pd.DataFrame:
-    """행안부 통계를 읍면동 이름으로 연결한다."""
-    hh = pd.read_parquet(PROCESSED_DIR / "ext_single_household.parquet")
+def link_mois(dong: gpd.GeoDataFrame) -> pd.DataFrame | None:
+    """행안부 통계를 읍면동 이름으로 연결한다. 정제본이 없으면 건너뛴다."""
+    path = PROCESSED_DIR / "ext_single_household.parquet"
+    if not path.exists():
+        print(f"[행안부] {path.name} 없음 → 건너뜀 (build_external.py를 먼저 실행)")
+        return None
+    hh = pd.read_parquet(path)
     hh = hh.drop(columns=["ADM_CD", "ADM_NM"], errors="ignore")  # 재실행 시 중복 컬럼 방지
     names = dong[["ADM_CD", "ADM_NM", "SGG_NM"]]
     out = hh.merge(names, left_on=["SGG_NM", "읍면동명"], right_on=["SGG_NM", "ADM_NM"], how="left")
@@ -113,8 +117,8 @@ def main() -> None:
 
     link_sk(dong)
     link_store(dong)
-    link_mois(dong)
-    print("\n연결 완료: sk_cell_adm / store_adm / ext_single_household / dong_master")
+    mois = link_mois(dong)
+    print("\n연결 완료: sk_cell_adm / store_adm / dong_master" + (" / ext_single_household" if mois is not None else ""))
 
 
 if __name__ == "__main__":
