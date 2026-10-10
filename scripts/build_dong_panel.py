@@ -1,6 +1,6 @@
 """A4 동 지표 패널을 만든다 (47개 행정동, 통신 데이터로 재는 터전).
 
-윤지 재분석 `reanalysis/b4_ground.py`의 계산을 SK 원본에서 바로 하도록 옮겼다.
+윤지 재분석 `reanalysis/b4_ground.py`의 계산을 SK 원본에서 바로 하도록 옮겼다(b4는 삭제, 원본은 git 이력 5042bf3).
 b4가 읽던 `sk_dong.csv`·`sk_age.pkl`을 만드는 코드는 넘겨받지 못해서, 지표 정의는
 윤지 결과(`reanalysis/reference/features_dong.csv`)와 47개 동이 모두 같아지도록 맞췄다.
 

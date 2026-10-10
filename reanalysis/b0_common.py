@@ -4,7 +4,7 @@
 """
 import pandas as pd, numpy as np
 from pathlib import Path
-# 저장소로 옮기며 바꾼 것: 입출력 경로만(a0·b0·b1·b2·b2b·b3에 해당. b4·b5는 미이식). 정제본·결과는 data/processed/reanalysis/ (git 제외)
+# 저장소로 옮기며 바꾼 것: 입출력 경로만(b5는 글꼴도. b4_ground는 입력 생성 코드가 없어 삭제 → scripts/build_dong_panel.py). 정제본·결과는 data/processed/reanalysis/ (git 제외)
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / 'data' / 'processed' / 'reanalysis'; OUT.mkdir(parents=True, exist_ok=True)
 STAY = ['커피전문점', '미용실', '미용서비스', '싸우나/목욕탕', '안마/마사지', '노래방', '유흥업소', '스포츠시설', '헬스장', '실내/실외골프장', '학원/학습지']
