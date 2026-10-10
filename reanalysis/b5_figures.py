@@ -1,3 +1,4 @@
+"""[미이식 — 실행 불가] 입출력 경로(out/, fig/)가 이전 작업 폴더 기준이고 글꼴 경로가 리눅스로 고정돼 윈도우에서 첫 줄에서 멈춘다. reference/에 그림이 없어 재현 대조 범위 밖. 원본 보존용."""
 import pandas as pd, numpy as np, matplotlib; matplotlib.use('Agg'); import matplotlib.pyplot as plt
 from matplotlib import font_manager as fm
 fm.fontManager.addfont('/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc'); plt.rcParams['font.family'] = fm.FontProperties(fname='/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc').get_name(); plt.rcParams['axes.unicode_minus'] = False
