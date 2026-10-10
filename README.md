@@ -34,7 +34,7 @@ pip install -r requirements.txt
 
 ## 데이터 배치
 
-원본 데이터는 git에 올리지 않습니다(`data/`는 gitignore). 각자 아래처럼 배치합니다.
+제공 데이터(`data/raw/`)와 정제 산출물(`data/processed/`)은 git에 올리지 않습니다. 제공 데이터는 각자 아래처럼 배치합니다. 외부 원본(`data/external/`)과 팀 공용 기준표(`data/reference/`)는 git에 올리되, 100MB를 넘는 원본은 `meta.json`만 올립니다(아래 외부 데이터 참고).
 
 ```
 data/raw/card/신한카드_빅콘테스트2026_데이터1.txt        # 일자 × 6시간대
