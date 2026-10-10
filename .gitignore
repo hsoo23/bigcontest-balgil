@@ -12,3 +12,6 @@ data/external/sgis_boundary/*
 !data/external/sgis_boundary/meta.json
 data/external/sbiz_store/*
 !data/external/sbiz_store/meta.json
+# API 페이지별 원본 응답은 로컬에만 둔다(합친 CSV와 meta.json만 올린다). 5만 건에서 잘린 다운로드본도 올리지 않는다.
+data/external/fac_*/raw/
+data/external/**/*.truncated

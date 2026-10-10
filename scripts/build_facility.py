@@ -34,8 +34,12 @@ from build_spatial import load_dong
 
 EXTERNAL_DIR = ROOT / "data" / "external"
 SOURCES = {"fac_senior_center": "경로당", "fac_welfare": "복지시설", "fac_library": "도서관"}
-NAME_COLS = ["시설명", "도서관명", "경로당명"]
-TYPE_COLS = ["시설구분", "시설종류명", "시설종류상세명", "시설유형", "도서관유형"]
+# 파일 다운로드본은 한글 열 이름, Open API(fetch_facility_api.py)는 영문 약어 열 이름이다.
+NAME_COLS = ["시설명", "도서관명", "경로당명", "flctNm", "lbrryNm"]
+TYPE_COLS = ["시설구분", "시설종류명", "시설종류상세명", "시설유형", "도서관유형", "flctTyp", "lbrrySe"]
+LAT_COLS = ["위도", "latitude", "lat"]
+LON_COLS = ["경도", "longitude", "lot", "lon"]
+STATUS_COLS = ["영업상태명", "busiCodNm"]
 LAT_RANGE, LON_RANGE = (33.0, 39.0), (124.0, 132.0)  # 국내 좌표 범위
 
 
@@ -60,19 +64,20 @@ def load_source(slug: str, kind: str) -> pd.DataFrame:
     raw = pd.concat([_read(p) for p in files], ignore_index=True)
 
     name, typ = _first(raw, NAME_COLS), _first(raw, TYPE_COLS)
-    if name is None or not {"위도", "경도"} <= set(raw.columns):
+    lat, lon, status = _first(raw, LAT_COLS), _first(raw, LON_COLS), _first(raw, STATUS_COLS)
+    if None in (name, lat, lon):
         raise SystemExit(f"[{kind}] 시설명·위도·경도 열을 찾지 못했습니다. 실제 열: {list(raw.columns)}")
 
     out = pd.DataFrame({
         "시설종류": kind,
         "시설명": raw[name],
         "세부유형": raw[typ] if typ else pd.NA,
-        "위도": pd.to_numeric(raw["위도"], errors="coerce"),
-        "경도": pd.to_numeric(raw["경도"], errors="coerce"),
+        "위도": pd.to_numeric(raw[lat], errors="coerce"),
+        "경도": pd.to_numeric(raw[lon], errors="coerce"),
     })
     n_all = len(out)
-    if "영업상태명" in raw.columns:
-        closed = raw["영업상태명"].eq("폐업")
+    if status:
+        closed = raw[status].eq("폐업")
         out = out[~closed]
         print(f"[{kind}] 폐업 {closed.sum():,}개 제외 (휴업은 남김)")
 
