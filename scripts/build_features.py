@@ -114,7 +114,7 @@ def dong_static() -> pd.DataFrame:
     hh["일인세대율"] = hh["일인세대율"] * 100
 
     store = pd.read_parquet(PROCESSED_DIR / "store_adm.parquet")
-    stay = store[is_stay_store(store["상권업종중분류명"])]
+    stay = store[is_stay_store(store)]
     infra = pd.DataFrame(
         {"점포수": store.groupby("ADM_CD").size(), "체류형점포수": stay.groupby("ADM_CD").size()}
     ).fillna(0).reset_index()
