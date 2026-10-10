@@ -11,6 +11,8 @@
 정제 규칙
   * cp949 인코딩. 열 이름에 단위가 붙어 있어 앞부분으로 찾는다 (예: '평균기온(°C)')
   * 강수량·신적설이 비어 있으면 0으로 둔다. ASOS는 비·눈이 없던 날을 공란으로 내려준다
+    단, 기간 내내 값이 하나도 없는 지점은 관측을 안 한 것으로 보고 결측으로 남긴다
+    (춘천 101은 2025년 하반기 적설이 전부 공란이다. 같은 날 서울은 5.1cm)
   * 기온 결측은 채우지 않고 남긴 뒤 개수를 출력한다
 
 실행: python scripts/build_weather.py
@@ -31,11 +33,11 @@ SRC_DIR = ROOT / "data" / "external" / "kma_asos"
 STATION = {108: "서울 강남구", 101: "강원 춘천시"}  # 강남구에는 ASOS 지점이 없어 서울(108)을 쓴다
 PERIOD = pd.date_range("2025-07-01", "2025-12-31", freq="D")
 COLUMNS = {  # 원본 열 이름의 앞부분 → 정제 후 이름
-    "평균기온": "평균기온",
+    "평균기온(": "평균기온",
     "최저기온(": "최저기온",
     "최고기온(": "최고기온",
     "일강수량": "강수량",
-    "일 최심신적설": "신적설",
+    "일 최심신적설(": "신적설",  # "일 최심신적설 시각(hhmi)"과 구분
 }
 ZERO_IF_MISSING = ["강수량", "신적설"]
 
@@ -59,7 +61,11 @@ def load_asos() -> pd.DataFrame:
             out[name] = pd.NA
         else:
             out[name] = pd.to_numeric(raw[col], errors="coerce")
-    out[ZERO_IF_MISSING] = out[ZERO_IF_MISSING].fillna(0)
+    for col in ZERO_IF_MISSING:
+        observed = out.groupby("지점")[col].transform(lambda s: s.notna().any())
+        out.loc[observed, col] = out.loc[observed, col].fillna(0)
+        for st in sorted(out.loc[~observed, "지점"].unique()):
+            print(f"[주의] 지점 {st}의 {col} 값이 전부 비어 있어 0으로 채우지 않고 결측으로 둡니다 (미관측 추정)")
 
     out = out[out["지점"].isin(STATION) & out["일자"].isin(PERIOD)].drop_duplicates(["지점", "일자"])
     out.insert(0, "SGG_NM", out.pop("지점").map(STATION))
@@ -79,7 +85,7 @@ def main() -> None:
               + f", 기온 결측 {temp_na}")
 
     monthly = w.assign(월=w["일자"].dt.month).groupby(["SGG_NM", "월"]).agg(
-        평균기온=("평균기온", "mean"), 강수량=("강수량", "sum"), 신적설=("신적설", "sum"), 강수일=("강수량", lambda s: (s > 0).sum())
+        평균기온=("평균기온", "mean"), 강수량=("강수량", "sum"), 신적설=("신적설", lambda s: s.sum(min_count=1)), 강수일=("강수량", lambda s: (s > 0).sum())
     )
     print("\n■ 월별 요약")
     print(monthly.round(1).to_string())
