@@ -31,8 +31,12 @@ ESSENTIAL_MCT = [
 # 카드의 체류 업종과 성격을 맞췄다. 부분 문자열 패턴("음식|주점|커피|...")은
 # 상가정보 어휘와 어긋나 커피('비알코올 ')·욕탕·유원지·도서관 4,547개를 놓쳤으므로
 # 중분류명 전체를 정확히 비교한다. 중분류명 일부에 뒤쪽 공백이 있어 strip()이 필요하다.
-# 유원지·오락 포함 여부는 카드 체류 범위와 맞추는 문제로 이슈 #8에서 결정한다.
-STAY_STORE_MID = ["비알코올", "이용·미용", "욕탕·신체관리", "스포츠 서비스", "유원지·오락", "주점", "도서관·사적지"]
+STAY_STORE_MID = ["비알코올", "이용·미용", "욕탕·신체관리", "스포츠 서비스", "주점", "도서관·사적지"]
+
+# 중분류 '유원지·오락'은 소분류 단위로 카드 체류와 맞춘다(이슈 #8, D안).
+# 노래방은 카드 체류에도 있어 남기고, PC방·게임장(카드 게임방/오락실)과 기타 오락장·
+# 수상레저·낚시터(카드 놀이동산 계열)는 카드처럼 뺀다. 주민이 머무는 곳이 아니다.
+STAY_STORE_SUB = ["노래방"]
 
 TARGET_AGES = ["50대", "60대"]
 CONTROL_AGES = ["30대", "40대"]  # 기준선. 연령 효과를 제거하는 대조군이다.
@@ -53,9 +57,14 @@ def classify_mct(series: pd.Series) -> pd.Series:
     )
 
 
-def is_stay_store(mid: pd.Series) -> pd.Series:
-    """상가 중분류명이 체류형 점포인지 판정한다. 뒤쪽 공백을 지운 뒤 정확히 비교한다."""
-    return mid.str.strip().isin(STAY_STORE_MID)
+def is_stay_store(store: pd.DataFrame) -> pd.Series:
+    """상가 점포가 체류형인지 판정한다. 중분류는 통째로, 노래방은 소분류로 고른다.
+
+    뒤쪽 공백을 지운 뒤 정확히 비교한다.
+    """
+    mid = store["상권업종중분류명"].str.strip()
+    sub = store["상권업종소분류명"].str.strip()
+    return mid.isin(STAY_STORE_MID) | sub.isin(STAY_STORE_SUB)
 
 
 def resident_only(card: pd.DataFrame) -> pd.DataFrame:
