@@ -1,5 +1,6 @@
 data/*
 !data/external/
+!data/reference/
 __pycache__/
 *.pyc
 .venv/

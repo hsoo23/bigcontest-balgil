@@ -65,7 +65,7 @@ data/external/mois_population/*.csv                    # 행안부 주민등록 
 python scripts/build_processed.py     # 제공 데이터 정제 → data/processed/*.parquet
 python scripts/build_external.py      # 외부 데이터 정제
 python scripts/build_spatial.py       # 행정동 기준으로 전 데이터 연결
-python scripts/build_dong_code.py     # 47개 동 코드 대조표 → data/processed/dong_code.csv (C1)
+python scripts/build_dong_code.py     # 47개 동 코드 대조표 → data/reference/dong_code.csv (C1, git에 올림)
 python scripts/fetch_facility_api.py  # 경로당·도서관 전국 전체를 Open API로 받기 (.env 키 필요)
 python scripts/build_facility.py      # 경로당·도서관 좌표 → 행정동, 동별 시설 수 (C3)
 python scripts/build_weather.py       # ASOS 일자 × 시군구 기상 테이블 (B4)

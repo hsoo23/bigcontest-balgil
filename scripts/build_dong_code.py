@@ -11,7 +11,7 @@ SGIS 행정동 경계를 기준으로 데이터마다 다른 동 식별자를 �
 
 선행: build_processed.py → build_external.py → build_spatial.py
 실행: python scripts/build_dong_code.py
-산출: data/processed/dong_code.csv (수경 A4 동 패널의 기준)
+산출: data/reference/dong_code.csv (수경 A4 동 패널의 기준, git에 올린다)
 """
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ import pandas as pd
 from balgil.data import PROCESSED_DIR
 
 EXPECTED_DONG = {"서울 강남구": 22, "강원 춘천시": 25}
-OUT = PROCESSED_DIR / "dong_code.csv"
+OUT = PROCESSED_DIR.parent / "reference" / "dong_code.csv"  # 팀이 같이 쓰는 기준표라 git에 올린다
 
 
 def sk_codes() -> pd.DataFrame:
@@ -100,9 +100,9 @@ def main() -> None:
     print(flagged[["SGG_NM", "ADM_CD", "ADM_NM", "비고"]].to_string(index=False) if len(flagged) else "  없음")
 
     cols = ["SGG_NM", "ADM_CD", "ADM_NM", "MOIS_CD", "STORE_CD", "SK_격자수", "점포수", "STORE_일치율", "비고"]
+    OUT.parent.mkdir(parents=True, exist_ok=True)
     out[cols].to_csv(OUT, index=False, encoding="utf-8-sig")
     print(f"\n저장: {OUT.relative_to(PROCESSED_DIR.parents[1])}")
-    print("남은 일: SGIS 행정구역 코드표를 내려받아 ADM_CD·ADM_NM 47줄을 눈으로 대조하고 비고를 채운다.")
 
 
 if __name__ == "__main__":
