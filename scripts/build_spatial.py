@@ -113,7 +113,13 @@ def main() -> None:
 
     link_sk(dong)
     link_store(dong)
-    link_mois(dong)
+
+    # 행안부 통계는 아직 받지 않은 사람이 있을 수 있다. 없으면 건너뛴다 —
+    # 여기서 멈추면 앞의 SK·상가 연결까지 못 쓰게 된다.
+    if (PROCESSED_DIR / "ext_single_household.parquet").exists():
+        link_mois(dong)
+    else:
+        print("[행안부] ext_single_household.parquet 없음 — 건너뜁니다 (build_external.py 먼저 실행)")
     print("\n연결 완료: sk_cell_adm / store_adm / ext_single_household / dong_master")
 
 
