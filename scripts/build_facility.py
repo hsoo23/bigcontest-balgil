@@ -1,12 +1,16 @@
-"""시설 표준데이터 3종의 좌표를 행정동에 연결하고 동별 시설 수를 센다 (C3).
+"""시설 표준데이터 2종(경로당·도서관)의 좌표를 행정동에 연결하고 동별 시설 수를 센다 (C3).
 
 자원 데이터(복지로·1365)는 시군구 이상이라 "어느 동에 무엇이 있나"를 말할 수 없다
 (explore_external.py 1절). 좌표가 있는 시설 표준데이터로 터전의 동 단위 자원을 채운다.
 
-원본: 공공데이터포털 표준데이터 페이지의 "파일 내려받기(CSV)". 전국 파일 그대로 둔다.
+원본: fetch_facility_api.py가 Open API로 받은 전국 CSV (파일 다운로드는 5만 건에서 잘린다)
   data/external/fac_senior_center/  전국마을회관및경로당표준데이터 (15114136)
-  data/external/fac_welfare/        전국사회복지시설표준데이터     (15096296, 노인복지관 포함)
   data/external/fac_library/        전국도서관표준데이터           (15013109)
+
+사회복지시설은 뺐다. 전국사회복지시설표준데이터(15096296)는 파일 없이 한국사회보장정보원
+API(sclWlfrFcltInfoInqirService2)만 제공하는데, 이 API는 좌표·주소·건물관리번호를 주지 않고
+소관 시군구까지만 알려 준다. 강남만 좌표가 있는 구 자체 자료가 있으나, 두 도시의 터전을
+다른 재료로 재게 되므로 쓰지 않는다. 보고서 한계에 적는다.
 
 정제 규칙
   * 인코딩은 UTF-8을 먼저 시도하고 안 되면 cp949로 읽는다 (포털 파일마다 다르다)
@@ -33,7 +37,7 @@ from balgil.data import PROCESSED_DIR, ROOT
 from build_spatial import load_dong
 
 EXTERNAL_DIR = ROOT / "data" / "external"
-SOURCES = {"fac_senior_center": "경로당", "fac_welfare": "복지시설", "fac_library": "도서관"}
+SOURCES = {"fac_senior_center": "경로당", "fac_library": "도서관"}
 # 파일 다운로드본은 한글 열 이름, Open API(fetch_facility_api.py)는 영문 약어 열 이름이다.
 NAME_COLS = ["시설명", "도서관명", "경로당명", "flctNm", "lbrryNm"]
 TYPE_COLS = ["시설구분", "시설종류명", "시설종류상세명", "시설유형", "도서관유형", "flctTyp", "lbrrySe"]
@@ -107,7 +111,7 @@ def main() -> None:
     print(f"\n■ 대상 지역 안 시설 {len(sj):,}개")
     print(sj.groupby(["SGG_NM", "시설종류"]).size().unstack(fill_value=0).to_string())
     if sj["세부유형"].notna().any():
-        print("\n■ 세부유형 (복지시설은 노인복지 계열만 터전에 쓸지 결정 필요)")
+        print("\n■ 세부유형")
         print(sj.groupby(["시설종류", "세부유형"]).size().to_string())
 
     counts = sj.groupby(["ADM_CD", "시설종류"]).size().unstack(fill_value=0).add_suffix("수")

@@ -52,7 +52,6 @@ data/external/sgis_boundary/bnd_dong_00_2025_2Q.shp     # SGIS 행정동 경계 
 data/external/sbiz_store/*.csv                          # 소상공인 상가(상권)정보 (현수)
 data/external/kma_asos/*.csv                            # 기상청 ASOS 일자료 서울108·춘천101 (현수)
 data/external/fac_senior_center/*.csv                   # 전국마을회관및경로당표준데이터 (현수)
-data/external/fac_welfare/*.csv                         # 전국사회복지시설표준데이터 (현수)
 data/external/fac_library/*.csv                        # 전국도서관표준데이터 (현수)
 data/external/mois_single_household/*.csv              # 행안부 1인세대 (윤지)
 data/external/mois_population/*.csv                    # 행안부 주민등록 인구 (윤지)
@@ -67,7 +66,8 @@ python scripts/build_processed.py     # 제공 데이터 정제 → data/process
 python scripts/build_external.py      # 외부 데이터 정제
 python scripts/build_spatial.py       # 행정동 기준으로 전 데이터 연결
 python scripts/build_dong_code.py     # 47개 동 코드 대조표 → data/processed/dong_code.csv (C1)
-python scripts/build_facility.py      # 시설 3종 좌표 → 행정동, 동별 시설 수 (C3)
+python scripts/fetch_facility_api.py  # 경로당·도서관 전국 전체를 Open API로 받기 (.env 키 필요)
+python scripts/build_facility.py      # 경로당·도서관 좌표 → 행정동, 동별 시설 수 (C3)
 python scripts/build_weather.py       # ASOS 일자 × 시군구 기상 테이블 (B4)
 python scripts/build_features.py      # 지표 산출
 ```
