@@ -5,7 +5,7 @@
 지표 구성
   역할 상실  : 평일화 지수(평일/주말 결제비, 평일 낮 결제 비중) — 카드, 시군구 단위
   관계 자원  : 1인세대율 — 행안부, 행정동 단위
-  소비 결핍  : 사회적 소비 비중과 대조군 대비 격차 — 카드, 시군구 단위
+  발길의 질  : 체류·식사·익명 소비 비중과 체류 비중의 대조군 대비 격차 — 카드, 시군구 단위
   또래·활동  : 동별 5060 유동인구 비중, 야간 활동 비중, 주말 유동비 — SK, 행정동 단위
   인프라     : 체류형 점포 수와 인구 대비 밀도 — 상가정보, 행정동 단위
 
@@ -42,16 +42,20 @@ SEXES = ["남성", "여성"]
 
 
 def card_consumption() -> pd.DataFrame:
-    """사회적·혼자형 소비 비중과 대조군 대비 격차 (시군구 × 성 × 연령 × 월)."""
+    """체류·식사·익명 소비 비중과 체류 비중의 대조군 대비 격차 (시군구 × 성 × 연령 × 월).
+
+    분모는 분류 밖 업종('기타')까지 포함한 전체 건수다(실행계획 2절).
+    """
     card = resident_only(pd.read_parquet(PROCESSED_DIR / "card_resid.parquet"))
     card = card[card["AGE_CCD"].isin(AGES)].copy()
     card["소비유형"] = classify_mct(card["MCT_RY_CD"])
     card["STD_YM"] = card["TA_YMD"].dt.strftime("%Y%m")
 
     grp = card.groupby(["MCT_SGG_CD", "STD_YM", "SEX_CCD", "AGE_CCD", "소비유형"])["USE_CNT"].sum().unstack(fill_value=0)
-    out = (grp.div(grp.sum(axis=1), axis=0)[["사회적", "혼자형"]] * 100).reset_index()
-    out.columns = ["SGG_NM", "STD_YM", "SEX_CCD", "AGE_CCD", "사회적소비비중", "혼자형소비비중"]
-    out["사회적소비_대조군격차"] = gap_to_control(out, "사회적소비비중", ["SGG_NM", "STD_YM", "SEX_CCD"])
+    share = grp.div(grp.sum(axis=1), axis=0).reindex(columns=["체류", "식사", "익명"], fill_value=0)  # 일부만 떼어 돌릴 때 빈 분류 대비
+    out = (share * 100).reset_index()
+    out.columns = ["SGG_NM", "STD_YM", "SEX_CCD", "AGE_CCD", "체류비중", "식사비중", "익명비중"]
+    out["체류비중_대조군격차"] = gap_to_control(out, "체류비중", ["SGG_NM", "STD_YM", "SEX_CCD"])
     return out
 
 
@@ -134,13 +138,14 @@ def main() -> None:
     features["체류형점포_대상천명당"] = features["체류형점포수"] / features["인구수"] * 1000  # 해당 성·연령 인구 1,000명당
     features["대상여부"] = features["AGE_CCD"].isin(TARGET_AGES)
 
-    features.to_parquet(PROCESSED_DIR / "features_dong.parquet", index=False)
+    # A4 동 패널(features_dong.parquet, 47동)과 이름이 겹치지 않게 단위를 이름에 넣는다.
+    features.to_parquet(PROCESSED_DIR / "features_dong_month.parquet", index=False)
     print(f"피처 테이블 {features.shape[0]:,}행 × {features.shape[1]}열 "
           f"(행정동 {features['ADM_CD'].nunique()} × 월 {features['STD_YM'].nunique()} × 성별 2 × 연령대 {len(AGES)})")
     missing = features.isna().sum()
     print("결측:", missing[missing > 0].to_dict() or "없음")
 
-    cols = ["평일주말비_대조군격차", "사회적소비_대조군격차", "일인세대율", "체류형점포_대상천명당", "야간활동비중"]
+    cols = ["평일주말비_대조군격차", "체류비중_대조군격차", "일인세대율", "체류형점포_대상천명당", "야간활동비중"]
     print("\n■ 5060 지표 요약 (2025-12)")
     view = features[(features["대상여부"]) & (features["STD_YM"] == "202512")]
     print(view.groupby(["SGG_NM", "SEX_CCD", "AGE_CCD"])[cols].mean().round(2).to_string())
