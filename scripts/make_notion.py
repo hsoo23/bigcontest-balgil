@@ -117,7 +117,9 @@ def main() -> None:
             print(f"  건너뜀 — {src} 없음")
             continue
         out = convert(src.read_text(encoding="utf-8"), title, lead)
-        (OUT_DIR / name).write_text(out, encoding="utf-8")
+        # newline="\n": 윈도우 텍스트 모드가 CRLF로 쓰면 OS가 다른 사람이
+        # 다시 만들 때마다 파일 전체가 바뀐 것으로 잡힌다. 원본과 같은 LF로 고정한다.
+        (OUT_DIR / name).write_text(out, encoding="utf-8", newline="\n")
         print(f"  {OUT_DIR.relative_to(ROOT)}/{name}  {len(out):,}자")
 
     leftovers = [

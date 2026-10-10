@@ -26,6 +26,7 @@ from balgil.data import PROCESSED_DIR, ROOT
 
 EXTERNAL_DIR = ROOT / "data" / "external"
 TARGET_SGG_NM = {"강남구": "서울 강남구", "춘천시": "강원 춘천시"}
+AGE_RANGE = range(0, 101)  # 원본 CSV의 1세 단위 열 범위
 AGE_BANDS = {"30대": range(30, 40), "40대": range(40, 50), "50대": range(50, 60), "60대": range(60, 70), "70대이상": range(70, 111)}
 
 
@@ -58,17 +59,26 @@ def _read_mois(slug: str) -> pd.DataFrame:
             if not m:
                 continue
             sex = {"남": "남자", "여": "여자", "계": "계"}[m.group(1)]
-            values[f"{m.group(2)}세{sex}"] = pd.to_numeric(raw[col], errors="coerce")
+            # errors="coerce"로 넘기면 형식이 바뀐 달의 자료가 결측이 되고,
+            # 아래 sum()이 결측을 건너뛰어 조용히 작은 값이 나온다. 바로 멈춘다.
+            values[f"{m.group(2)}세{sex}"] = pd.to_numeric(raw[col], errors="raise")
+        # 계·남·여 x 0~100세 = 303개. 열 이름 형식이 바뀌면 정규식이 안 맞고
+        # _by_band()가 빈 열 목록을 더해 0을 돌려주므로, 여기서 먼저 확인한다.
+        if len(values) != 3 * len(AGE_RANGE):
+            raise ValueError(f"{src.name}: 값 열이 {len(values)}개다. {3 * len(AGE_RANGE)}개를 기대했다")
         out = pd.concat([out, pd.DataFrame(values)], axis=1)
         frames.append(out[keep])
     both = pd.concat(frames, ignore_index=True)
     return both[both["시군구명"].isin(TARGET_SGG_NM)].reset_index(drop=True)
+
 
 def _by_band(raw: pd.DataFrame, value_name: str) -> pd.DataFrame:
     rows = []
     for band, ages in AGE_BANDS.items():
         for sex, suffix in (("남성", "남자"), ("여성", "여자")):
             cols = [f"{a}세{suffix}" for a in ages if f"{a}세{suffix}" in raw.columns]
+            if not cols:
+                raise ValueError(f"{band} {sex}에 해당하는 열이 없다. 열 이름 형식을 확인하라")
             rows.append(
                 raw[["시도명", "시군구명", "읍면동명", "행정기관코드"]]
                 .assign(성별=sex, 연령대=band, **{value_name: raw[cols].sum(axis=1)})
