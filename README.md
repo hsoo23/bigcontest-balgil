@@ -85,6 +85,16 @@ python scripts/build_features.py      # 지표 산출
 
 > **주의**: `features.py`에 알려진 버그가 두 개 있습니다 — `주류판매`가 두 분류에 중복(A3, 수경), 상가 패턴이 체류형 점포 4,015개 누락(커피 2,950 + 욕탕·노래방·도서관, C2, 현수 — `track-c`에서 수정, 오락은 #8 D안대로 노래방만). 10/11까지 각자 고칩니다.
 
+## 담당자 화면 (D3)
+
+```bash
+pip install -r app/requirements-app.txt     # 분석 고정 버전 + streamlit·folium
+streamlit run app/balgil_app.py             # 탭 4개: 주간 브리핑 · 발길 상세 · 지도 · 보정 전·후
+# http://localhost:8501/?screen=3 처럼 붙이면 그 화면만 (캡처·데모용)
+```
+
+화면은 git에 있는 파일만 읽어서 **원본 데이터 없이도 뜹니다** — `reanalysis/reference/`(재분석 결과)와 `data/reference/app/`(지도·시설·SHAP). 원본이 바뀌면 `python scripts/build_app_data.py`로 다시 만듭니다.
+
 ## 검증 스크립트
 
 분석 주장의 근거를 다시 뽑습니다. **보고서에 쓸 수치는 여기서 나온 값만 씁니다.**
