@@ -34,12 +34,18 @@ assert not _dup, f"업종이 두 분류에 들어 있음: {_dup}"  # 예전 주�
 # 카드의 체류 업종과 성격을 맞췄다. 부분 문자열 패턴("음식|주점|커피|...")은
 # 상가정보 어휘와 어긋나 커피('비알코올 ')·욕탕·유원지·도서관 4,547개를 놓쳤으므로
 # 중분류명 전체를 정확히 비교한다. 중분류명 일부에 뒤쪽 공백이 있어 strip()이 필요하다.
-STAY_STORE_MID = ["비알코올", "이용·미용", "욕탕·신체관리", "스포츠 서비스", "주점", "도서관·사적지"]
+STAY_STORE_MID = ["비알코올", "이용·미용", "욕탕·신체관리", "스포츠 서비스", "주점"]
 
 # 중분류 '유원지·오락'은 소분류 단위로 카드 체류와 맞춘다(이슈 #8, D안).
 # 노래방은 카드 체류에도 있어 남기고, PC방·게임장(카드 게임방/오락실)과 기타 오락장·
 # 수상레저·낚시터(카드 놀이동산 계열)는 카드처럼 뺀다. 주민이 머무는 곳이 아니다.
 STAY_STORE_SUB = ["노래방"]
+
+# 위 중분류 안에서도 카드 체류에 대응 업종이 없는 소분류는 뺀다(#8에서 C2로 넘긴 건, #4).
+# 요리 주점은 카드에 일반 주점 업종이 없고(체류는 유흥업소만), 독서실/스터디 카페는
+# 혼자 공부하러 가는 곳이라 카드 확정안에도 없다(중분류 '도서관·사적지'는 이것뿐이라 통째로 뺐다).
+# 둘을 빼도 도시 안 동 순위 상관은 0.99 이상이고 하위 3개 동은 그대로다.
+STAY_STORE_EXCLUDE_SUB = ["요리 주점"]
 
 TARGET_AGES = ["50대", "60대"]
 CONTROL_AGES = ["30대", "40대"]  # 기준선. 연령 효과를 제거하는 대조군이다.
@@ -56,13 +62,13 @@ def classify_mct(series: pd.Series) -> pd.Series:
 
 
 def is_stay_store(store: pd.DataFrame) -> pd.Series:
-    """상가 점포가 체류형인지 판정한다. 중분류는 통째로, 노래방은 소분류로 고른다.
+    """상가 점포가 체류형인지 판정한다. 중분류로 고르고 소분류로 넣고 뺀다.
 
     뒤쪽 공백을 지운 뒤 정확히 비교한다.
     """
     mid = store["상권업종중분류명"].str.strip()
     sub = store["상권업종소분류명"].str.strip()
-    return mid.isin(STAY_STORE_MID) | sub.isin(STAY_STORE_SUB)
+    return (mid.isin(STAY_STORE_MID) & ~sub.isin(STAY_STORE_EXCLUDE_SUB)) | sub.isin(STAY_STORE_SUB)
 
 
 def resident_only(card: pd.DataFrame) -> pd.DataFrame:
