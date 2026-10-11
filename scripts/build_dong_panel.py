@@ -11,6 +11,8 @@ SK 격자는 BLOCK_CD 앞 8자리로 동을 정하고, 개포3동만 옛 코드(
 지표 (6개월, 60대 이상 = SK 60GU)
   60대이상_규모   60대 이상 유동인구 6개월 합 ÷ 144. 상대 비교용 축척 — 절대 인원수로 읽지 말 것
                   (flow_age_pop에는 시간대 축이 없어 '시간당'이 아님. 순위·상관에만 쓰므로 상수와 무관)
+                  춘천에서는 사실상 동 인구 수다(행안부 60세 이상 인구와 스피어만 0.89, 강남은 유입이 커서 0.10).
+                  외부 라벨과 비교할 때 동 크기가 섞이므로 인구로 나눠 보거나 이 점을 함께 적을 것 (#17)
   60대이상_비중   60대 이상 ÷ 전 연령
   60대이상_여성비중  60대 이상 중 여성
   일요일_평일비   일요일 ÷ 평일(월~금) 평균, 전 연령
@@ -99,7 +101,7 @@ def main() -> None:
               f"상위 5개 동 중 6개월 내내 5위 안 {top5}")
         stab.append((c, len(x), round(cor.min(), 3), round(cor.mean(), 3), top5))
     pd.DataFrame(stab, columns=["도시", "동 수", "월별 순위 상관 최솟값", "평균", "상위 5개 동 중 6개월 내내 5위 안"]).to_csv(
-        PROCESSED_DIR / "dong_stability.csv", index=False, encoding="utf-8-sig")
+        PROCESSED_DIR / "dong_stability.csv", index=False, encoding="utf-8-sig", lineterminator="\n")
     print("저장: data/processed/dong_stability.csv")
 
     print("\n■ 터전이 가장 약한 동 (통신 기준, 도시별 3개)")
