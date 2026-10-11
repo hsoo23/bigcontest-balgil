@@ -29,11 +29,15 @@
 ```bash
 git clone https://github.com/hsoo23/balgil.git
 cd balgil
-python -m venv .venv && source .venv/bin/activate
+python -m venv .venv && source .venv/bin/activate   # 윈도우: .venv\Scriptsctivate
 pip install -r requirements.txt
 ```
 
-`requirements.txt`는 **버전을 고정해 두었습니다.** 셋이 다른 버전으로 작업하면 제출 전 재현 확인에서 터집니다. 버전을 올려야 하면 회의에서 함께 올립니다.
+**Python 3.11 이상**이 필요합니다. `geopandas==1.2.0`이 3.11부터 지원합니다.
+
+`requirements.txt`는 **버전을 고정해 두었습니다.** 셋이 다른 버전으로 작업하면 제출 전 재현 확인(체크리스트 11번)에서 터집니다. 버전을 올려야 하면 혼자 올리지 말고 회의에서 함께 올린 뒤 커밋합니다.
+
+> `requirements.txt`의 주석은 **영어(ASCII)로만** 씁니다. 한국어 윈도우에서 pip가 이 파일을 cp949로 읽어, 한글 주석이 있으면 `pip install -r`이 `UnicodeDecodeError`로 실패합니다(#2). 설명은 이 README에 둡니다.
 
 ## 데이터 배치
 
