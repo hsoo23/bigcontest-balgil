@@ -1,10 +1,10 @@
 [theme]
 # 화면 캡처가 발표자료에 들어가므로 밝은 테마로 고정한다(차트 색은 밝은 면 기준으로 검증).
 base = "light"
-backgroundColor = "#f9f9f7"
+backgroundColor = "#f6f9fc"
 secondaryBackgroundColor = "#fcfcfb"
-textColor = "#0b0b0b"
-primaryColor = "#2a78d6"
+textColor = "#0d253d"
+primaryColor = "#533afd"
 font = "sans serif"
 
 [browser]
