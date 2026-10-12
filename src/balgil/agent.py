@@ -9,9 +9,12 @@ LLM은 부르지 않는다. 문장은 고정 틀에 계산값을 슬롯으로 �
   map_ground                          터전        ← features_dong             (A4, PR #12)
   rate_state                          네 상태 판정
   match_roster                        명부 교차    ← 가상 명부 (입력 형식: docs/agent_입력형식.md)
+  find_counterpart                    상대방 업종·동 점포 수 ← segment_industry · dong_industry_stores
+                                      (scripts/build_segment_industry.py). D4 장소 표가 오면 장소까지
   draft_outreach                      고정 문장 틀
-아직 안 되는 것 (D4 가상 데이터·자원 정제본이 필요, 10/18~20)
-  find_counterpart · match_resource · log_outcome
+  briefing_tables                     D3 화면용 표 넷 (--out)
+아직 안 되는 것 (자원 정제본·종결 형식 확정 뒤, 10/18–20)
+  match_resource · log_outcome
 
 단위 원칙 (#14, #20)
   끊김·좁아짐은 시군구 × 성 × 연령 집단이다. 카드 지표는 동에 붙이지 않는다.
@@ -64,6 +67,8 @@ class Inputs:
     segment_month: pd.DataFrame  # 36칸 × 월
     breaks: pd.DataFrame         # 12집단 × 일 (보정 단계별 편차와 판정)
     dong: pd.DataFrame           # 47동 (터전)
+    industry: pd.DataFrame | None = None  # 집단 × 상대방 후보 업종 쏠림 (build_segment_industry.py)
+    dong_stores: pd.DataFrame | None = None  # 동 × 업종 점포 수 (같은 스크립트, 상가 원본 필요)
     sources: dict = field(default_factory=dict)
 
 
@@ -84,7 +89,14 @@ def load_inputs() -> Inputs:
         dong["ADM_NM"] = dong["ADM_NM"].str.replace(r"\(.*\)$", "", regex=True)
         dong["SGG_NM"] = dong["도시"].map(CITY_SGG)
     dong["ADM_CD"] = dong["ADM_CD"].astype(str)
-    return Inputs(seg, mon, brk, dong, {"segment": p_seg, "segment_month": p_mon, "breaks": p_brk, "dong": p_dong})
+    src = {"segment": p_seg, "segment_month": p_mon, "breaks": p_brk, "dong": p_dong}
+    opt = {}
+    for key, name in [("industry", "segment_industry.parquet"), ("dong_stores", "dong_industry_stores.parquet")]:
+        path = PROCESSED_DIR / name
+        opt[key] = pd.read_parquet(path) if path.exists() else None
+        if path.exists():
+            src[key] = path
+    return Inputs(seg, mon, brk, dong, sources=src, **opt)
 
 
 def seg_name(city: str, sex: str, age: str) -> str:
@@ -211,15 +223,44 @@ def match_roster(roster: pd.DataFrame, city: str, sex: str, age: str, as_of: pd.
     return m.sort_values("경과일", ascending=False).head(top_n).assign(칸_인원=len(m))
 
 
-def find_counterpart(*_, **__):
-    """발길이 닿던 곳 후보 3~4곳: 집단의 대면 업종 집중 × 대상자 동의 가게·경로당 × 게이트키퍼 지정.
-    입력: docs/agent_입력형식.md 「발길이 닿던 곳」 표 (D4). 10/18~20에 붙인다."""
-    raise NotImplementedError("D4 가상 데이터(발길이 닿던 곳 표)가 들어오면 붙입니다 — 10/18~20")
+COUNTERPART_SHARE_MIN = 0.03  # 후보 업종 결제의 3% 미만인 업종은 쏠림이 커도 "평소 가던 곳"이라 보기 어렵다
+
+
+def counterpart_industries(inp: Inputs, city: str, sex: str, age: str, n: int = 3) -> pd.DataFrame | None:
+    """그 집단의 평소 발길이 닿던 업종 n개 (기획안 4절 2단계 ①).
+    비중 상위 n-1개에, 같은 도시 전 연령보다 더 몰린(쏠림 최대) 업종 하나를 더한다.
+    비중만 보면 어느 집단이나 한식·약국이라, 쏠림이 그 집단다운 곳(예: 춘천 여성 고령의 미용실)을 살린다."""
+    if inp.industry is None:
+        return None
+    g = inp.industry[(inp.industry["city"] == city) & (inp.industry["sex"] == sex) & (inp.industry["AGE"] == age)]
+    g = g[g["비중"] >= COUNTERPART_SHARE_MIN]
+    top = g.nlargest(n - 1, "비중")
+    rest = g.drop(top.index)
+    return pd.concat([top, rest.nlargest(1, "쏠림")])[["업종", "발길분류", "비중", "쏠림"]]
+
+
+def find_counterpart(inp: Inputs, city: str, sex: str, age: str, adm_cd: str | None = None,
+                     places: pd.DataFrame | None = None, n: int = 3) -> pd.DataFrame | None:
+    """발길이 닿던 곳 후보 (기획안 4절 2단계).
+    ① 집단의 평소 업종 쏠림 → ② 대상자 동의 그 업종 점포 수(상가) → ③ D4 장소 표가 있으면 그 동의 해당 업종
+    가게와 경로당·마을회관을 게이트키퍼 지정 순으로 (#6: 가게가 적은 동은 경로당이 창구). 상호는 상가에서 내지 않는다."""
+    ind = counterpart_industries(inp, city, sex, age, n)
+    if ind is None:
+        return None
+    if adm_cd is not None and inp.dong_stores is not None:
+        d = inp.dong[inp.dong["ADM_CD"] == str(adm_cd)].iloc[0]
+        st = inp.dong_stores[(inp.dong_stores["SGG_NM"] == d["SGG_NM"]) & (inp.dong_stores["ADM_NM"] == d["ADM_NM"])]
+        ind = ind.merge(st[["업종", "점포수"]], on="업종", how="left").fillna({"점포수": 0})
+    if places is not None and adm_cd is not None:
+        p = places[places["행정동코드"] == str(adm_cd)]
+        p = p[p["종류"].isin(["경로당", "마을회관"]) | p["업종"].isin(ind["업종"])]
+        return p.sort_values(["게이트키퍼", "종류"], ascending=[False, True])
+    return ind
 
 
 def match_resource(*_, **__):
     """상태별 자원 후보: 복지로·1365 정제본(res_*.parquet)을 거리·반복성·대면성으로 정렬(기획안 6절)."""
-    raise NotImplementedError("자원 정제본(scripts/fetch_welfare_api.py 산출)을 받아 10/18~20에 붙입니다")
+    raise NotImplementedError("자원 정제본(scripts/fetch_welfare_api.py 산출)을 받아 10/18–20에 붙입니다")
 
 
 def log_outcome(*_, **__):
@@ -228,6 +269,13 @@ def log_outcome(*_, **__):
 
 
 # ------------------------------------------------------------------ 문장 틀
+def _counterpart_text(cp: pd.DataFrame | None) -> str:
+    if cp is None or cp.empty:
+        return "업종 쏠림 표 없음 (scripts/build_segment_industry.py)"
+    has_n = "점포수" in cp
+    return " · ".join(f"{r.업종}" + (f" {int(r.점포수)}곳" if has_n else f" {r.비중:.0%}") for r in cp.itertuples())
+
+
 def draft_outreach(st: State, people: pd.DataFrame | None = None) -> str:
     """고정 문장 틀 + 수치 슬롯. 명부의 이름·연락처·주소는 문장에 넣지 않는다(E6 4절)."""
     e = st.근거
@@ -250,10 +298,12 @@ def draft_outreach(st: State, people: pd.DataFrame | None = None) -> str:
                              + ". 30·40대를 빼고도 남은 공통 사건일 수 있습니다.")
         else:
             lines.append(f"〈연속성〉 지난 {WINDOW_DAYS}일 끊김 없음.")
+    if st.상태.startswith("끊김") and "상대방" in e:
+        lines.append(f"〈상대방〉 이 집단의 평소 발길이 닿던 업종: {_counterpart_text(e['상대방'])}")
     if people is not None and len(people):
         days = " · ".join(f"{d}일" for d in people["경과일"])
         lines.append(f"〈명부〉 이 칸에 드는 대상자 {int(people['칸_인원'].iloc[0])}명 중 마지막 접촉이 가장 오래된 {len(people)}명 ({days}).")
-        lines += [f"  - {r.대상자ID}: 접촉 {r.경과일}일 전 · 〈터전〉 {r.터전}" for r in people.itertuples()]
+        lines += [f"  - {r.대상자ID}: 접촉 {r.경과일}일 전 · 〈터전〉 {r.터전} · 〈물어볼 곳〉 {r.물어볼곳}" for r in people.itertuples()]
     if st.상태.startswith("끊김") and e.get("동시 끊김"):
         lines.append("▸ 권고: 개별 전화 전에 공통 사건(명절·한파·지역 행사)인지 먼저 확인합니다. 사건이 아니면 1단계 전화부터.")
     elif st.상태.startswith("끊김"):
@@ -265,28 +315,51 @@ def draft_outreach(st: State, people: pd.DataFrame | None = None) -> str:
 
 
 # ------------------------------------------------------------------ 주간 루프
-def weekly_briefing(inp: Inputs, as_of: pd.Timestamp, roster: pd.DataFrame | None = None, top_n: int = 3) -> str:
-    """끊김 루프(주 1회) 한 번. 60·70·80대 12집단을 판정하고, 끊긴 칸만 명부와 교차한다."""
+SIGNAL = {"끊김(빨강)": "빨강", "끊김(주황)": "주황", "좁아짐": "노랑", "정상": "초록"}
+BREAK_KIND = {"끊김(빨강)": "필수형", "끊김(주황)": "대면형"}
+
+
+@dataclass
+class Week:
+    as_of: pd.Timestamp
+    states: list            # 12집단 State
+    people: dict            # 집단 이름 → 명부 교차 결과 (끊긴 칸만)
+
+
+def run_week(inp: Inputs, as_of: pd.Timestamp, roster: pd.DataFrame | None = None, top_n: int = 3) -> Week:
+    """끊김 루프(주 1회) 한 번: 60·70·80대 12집단 판정 → 동시 끊김 표시 → 끊긴 칸만 상대방 업종·명부 교차."""
     states = [rate_state(inp, c, s, a, as_of) for c in CITY_SGG for s in ["남성", "여성"] for a in BREAK_AGES]
-    broken = sorted([st for st in states if st.상태.startswith("끊김")], key=lambda st: st.상태 != "끊김(빨강)")
+    broken = [st for st in states if st.상태.startswith("끊김")]
     # 같은 도시 고령 6집단 중 절반 이상이 같은 창에서 끊기면 개인 사건보다 공통 사건을 먼저 의심한다(기획안 2절)
     for city in CITY_SGG:
         same = [st for st in broken if st.집단.startswith(city)]
         if len(same) >= len(BREAK_AGES):
             for st in same:
                 st.근거["동시 끊김"] = (len(same), 2 * len(BREAK_AGES))
-    blocks, n_people = [], 0
+    people = {}
     for st in broken:
         city, sx, age = st.집단.split()
-        people = None
-        if roster is not None:
-            people = match_roster(roster, city, {"남": "남성", "여": "여성"}[sx], age, as_of, top_n)
-            people = people.assign(터전=[f"{g['동']} 터전 약한 순 {g['순위']}/{g['동 수']}" + (" (하위 20%)" if g["하위 20%"] else "")
-                                       for g in (map_ground(inp, cd) for cd in people["행정동코드"])])
-            n_people += len(people)
-        blocks.append(draft_outreach(st, people))
-    narrow = narrow_cells(inp)
-    ground = ground_alerts(inp)
+        sex = {"남": "남성", "여": "여성"}[sx]
+        st.근거["상대방"] = counterpart_industries(inp, city, sex, age)
+        if roster is None:
+            continue
+        pp = match_roster(roster, city, sex, age, as_of, top_n)
+        grounds = [map_ground(inp, cd) for cd in pp["행정동코드"]]
+        pp["행정동"] = [g["동"] for g in grounds]
+        pp["터전순위"] = [g["순위"] for g in grounds]
+        pp["터전"] = [f"{g['동']} 터전 약한 순 {g['순위']}/{g['동 수']}" + (" (하위 20%)" if g["하위 20%"] else "") for g in grounds]
+        pp["물어볼곳"] = [_counterpart_text(find_counterpart(inp, city, sex, age, cd)) for cd in pp["행정동코드"]]
+        people[st.집단] = pp
+    return Week(as_of, states, people)
+
+
+def weekly_briefing(inp: Inputs, as_of: pd.Timestamp, roster: pd.DataFrame | None = None, top_n: int = 3) -> str:
+    """끊김 루프 한 번을 담당자용 글로 낸다. 같은 내용의 표는 briefing_tables."""
+    wk = run_week(inp, as_of, roster, top_n)
+    broken = sorted([st for st in wk.states if st.상태.startswith("끊김")], key=lambda st: st.상태 != "끊김(빨강)")
+    blocks = [draft_outreach(st, wk.people.get(st.집단)) for st in broken]
+    narrow, ground = narrow_cells(inp), ground_alerts(inp)
+    n_people = sum(len(p) for p in wk.people.values())
     head = [f"# 주간 브리핑 — {as_of:%Y-%m-%d} 기준 (지난 {WINDOW_DAYS}일 창)",
             f"끊김 {len(broken)}개 집단 (빨강 {sum(st.상태 == '끊김(빨강)' for st in broken)} · 주황 {sum(st.상태 == '끊김(주황)' for st in broken)})"
             + (f", 확인 권고 {n_people}명" if roster is not None else ", 명부 없음 — 교차 생략"),
@@ -299,16 +372,63 @@ def weekly_briefing(inp: Inputs, as_of: pd.Timestamp, roster: pd.DataFrame | Non
     return "\n".join(head + ["\n\n".join(blocks) if blocks else "이번 주 끊김 없음."] + tail)
 
 
+def briefing_tables(inp: Inputs, as_of: pd.Timestamp, roster: pd.DataFrame | None = None, top_n: int = 3) -> dict[str, pd.DataFrame]:
+    """D3 화면이 읽는 표 넷. ① 주간 브리핑 = 요약·집단·대상자, ③ 지도 = 터전.
+    카드 지표는 집단 표에만 있고 동 표에는 없다(실행계획 2절)."""
+    wk = run_week(inp, as_of, roster, top_n)
+    prev = run_week(inp, as_of - pd.Timedelta(days=WINDOW_DAYS))
+    rows = []
+    for st in wk.states:
+        e, (city, sx, age) = st.근거, st.집단.split()
+        c, s = e.get("연속성", {}), e.get("보정", {})
+        rows.append({
+            "기준일": as_of.date(), "집단": st.집단, "도시": city, "성": {"남": "남성", "여": "여성"}[sx], "연령": age,
+            "신호": SIGNAL[st.상태], "상태": st.상태, "끊김종류": BREAK_KIND.get(st.상태, ""),
+            "동시끊김": bool(e.get("동시 끊김")), "끊김일수": c.get("끊김 일수", 0), "끊긴날": " ".join(c.get("끊긴 날", [])),
+            "대면_7일최저_pct": c.get("대면 최저(%)"), "필수_7일최저_pct": c.get("필수 최저(%)"),
+            "경보_보정없음": s.get("보정 없음"), "경보_계절보정": s.get("계절형 보정"), "경보_공통충격보정": s.get("공통 충격 보정"),
+            "양_유효발길수": round(e["양"]["값"], 2), "양_50대": round(e["양"]["50대"], 2),
+            "질_체류비중_pct": round(e["질"]["값"], 2), "질_50대_pct": round(e["질"]["50대"], 2),
+            "좁아짐상위": e["좁아짐 상위"], "상대방업종": _counterpart_text(e.get("상대방")) if st.상태.startswith("끊김") else "",
+            "명부_칸인원": int(wk.people[st.집단]["칸_인원"].iloc[0]) if st.집단 in wk.people and len(wk.people[st.집단]) else None,
+        })
+    groups = pd.DataFrame(rows).astype({"명부_칸인원": "Int64"})
+    sig = groups["신호"].value_counts()
+    alarms = groups[["경보_보정없음", "경보_계절보정", "경보_공통충격보정"]].sum()
+    summary = pd.DataFrame([{
+        "기준일": as_of.date(), "창_일수": WINDOW_DAYS,
+        "확인권고_집단": int(groups["상태"].str.startswith("끊김").sum()),
+        "지난주_확인권고_집단": sum(st.상태.startswith("끊김") for st in prev.states),
+        "빨강": int(sig.get("빨강", 0)), "주황": int(sig.get("주황", 0)), "노랑": int(sig.get("노랑", 0)), "초록": int(sig.get("초록", 0)),
+        "확인권고_인원": sum(len(p) for p in wk.people.values()) if roster is not None else None,
+        # 12집단 × 7일 중 경보일 합. 보정이 경보를 지우기도 하고(명절) 드러내기도 한다(30·40대만 오른 주)
+        "경보일_보정없음": int(alarms["경보_보정없음"]), "경보일_계절보정": int(alarms["경보_계절보정"]),
+        "경보일_공통충격보정": int(alarms["경보_공통충격보정"]),
+    }])
+    people = (pd.concat([p.assign(집단=k) for k, p in wk.people.items()], ignore_index=True)
+              [["집단", "대상자ID", "명부종류", "경과일", "행정동코드", "행정동", "터전순위", "물어볼곳"]]
+              if wk.people else pd.DataFrame(columns=["집단", "대상자ID", "명부종류", "경과일", "행정동코드", "행정동", "터전순위", "물어볼곳"]))
+    ground = inp.dong[["도시", "ADM_CD", "ADM_NM", "터전점수_통신", "터전순위_통신"]].copy()
+    ground["터전없음후보"] = ground["ADM_CD"].isin(ground_alerts(inp)["ADM_CD"])
+    return {"agent_summary": summary, "agent_groups": groups, "agent_people": people, "agent_ground": ground}
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="발길 에이전트 주간 브리핑 (D1 뼈대)")
     ap.add_argument("--as-of", default=None, help="기준일 YYYY-MM-DD (기본: 끊김 자료의 마지막 날)")
     ap.add_argument("--roster", type=Path, default=None, help="가상 명부 CSV (docs/agent_입력형식.md)")
     ap.add_argument("--top", type=int, default=3)
+    ap.add_argument("--out", type=Path, default=None, help="D3 화면용 표를 쓸 폴더 (예: data/processed/agent)")
     a = ap.parse_args()
     inp = load_inputs()
     as_of = pd.Timestamp(a.as_of) if a.as_of else inp.breaks["date"].max()
     roster = read_roster(a.roster) if a.roster else None
     print(weekly_briefing(inp, as_of, roster, a.top))
+    if a.out:
+        a.out.mkdir(parents=True, exist_ok=True)
+        for name, df in briefing_tables(inp, as_of, roster, a.top).items():
+            df.to_csv(a.out / f"{name}.csv", index=False, encoding="utf-8-sig", lineterminator="\n")
+        print(f"\n표 저장: {a.out} (agent_summary · agent_groups · agent_people · agent_ground)")
     print("\n입력: " + ", ".join(f"{k}={Path(v).relative_to(ROOT)}" for k, v in inp.sources.items()))
 
 
