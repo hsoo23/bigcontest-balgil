@@ -29,7 +29,7 @@
 ```bash
 git clone https://github.com/hsoo23/balgil.git
 cd balgil
-python -m venv .venv && source .venv/bin/activate   # 윈도우: .venv\Scriptsctivate
+python -m venv .venv && source .venv/bin/activate   # 윈도우: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
