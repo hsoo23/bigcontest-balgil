@@ -1,0 +1,5 @@
+# 화면(D3)만 쓰는 라이브러리. 분석 고정 버전은 ../requirements.txt를 그대로 따른다.
+-r ../requirements.txt
+streamlit==1.51.0
+altair==5.5.0
+folium==0.20.0
