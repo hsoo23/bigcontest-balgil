@@ -10,8 +10,10 @@
   shap_weekly.csv    좁아짐 분류 모델(재분석 b3, 랜덤포레스트)의 집단×주 SHAP 값과 예측 확률
 
 선행: build_spatial.py → build_dong_panel.py → build_facility.py
-      (SHAP은 git에 있는 reanalysis/reference/weekly_panel.csv만 쓴다)
-실행: python scripts/build_app_data.py
+      SHAP은 reanalysis/a0_load_clean.py 산출(card*.pkl)로 b3 패널을 반올림 없이 다시 만들어 쓴다
+실행: python scripts/build_app_data.py [--only shap]  (requirements.txt 고정 버전: scikit-learn 1.7.2, shap 0.48.0)
+주의: 같은 버전이어도 macOS arm64에서는 b3 랜덤포레스트가 reference/model_score.csv와 조금 다르게 나온다
+      (칸 통째로 빼기 새 진입 16/31 ↔ 18/31). shap_weekly.csv는 reference를 만든 환경에서 만든다.
 """
 from __future__ import annotations
 
@@ -71,16 +73,51 @@ def facilities() -> None:
     print(f"facilities.csv: {len(f)}곳 {f['시설종류'].value_counts().to_dict()}")
 
 
+def weekly_panel() -> pd.DataFrame:
+    """b3_models.py와 같은 주별 패널을 반올림 없이 다시 만든다.
+
+    reference/weekly_panel.csv는 4자리로 반올림된 값이라, 그걸로 학습하면 b3의 모델과 나무가 갈라져
+    SHAP 상위 6개 순서가 9% 칸에서 달라진다(PR #25 리뷰). 선행: reanalysis/a0_load_clean.py
+    """
+    sys.path.insert(0, str(ROOT / "reanalysis"))
+    from b0_common import AGES, adjust, faces, load
+
+    r, d1 = load()
+    wk = lambda s: (s - pd.Timestamp("2025-06-30")).dt.days // 7  # noqa: E731
+    r["w"], d1["w"] = wk(r.date), wk(d1.date)
+    keep = [a for a in AGES if a != "90대"]
+    r, d1 = r[r.AGE.isin(keep)], d1[d1.AGE.isin(keep)]
+    rows = []
+    for w in range(26):
+        i = adjust(faces(r[r.w == w], d1[d1.w == w], ["city", "sex", "AGE"]))
+        i["w"] = w
+        rows.append(i)
+    p = pd.concat(rows, ignore_index=True)
+    p["seg"] = p.city + " " + p.sex + " " + p.AGE
+    p["top"] = (p.groupby("w").narrow.rank(ascending=False) <= 7).astype(int)
+    p = p.sort_values(["seg", "w"])
+    for c in ["narrow", "stay_z", "breadth_z"]:
+        p["d_" + c] = p.groupby("seg")[c].diff().fillna(0)
+    p["m3"] = p.groupby("seg").narrow.transform(lambda x: x.rolling(3, min_periods=1).mean())
+    p["y"] = p.groupby("seg").top.shift(-1)
+
+    # 저장소의 reference와 같은 패널인지 확인한다 (반올림 자리까지)
+    ref = pd.read_csv(REF / "weekly_panel.csv")
+    gap = (p[FEATURES].round(4).reset_index(drop=True) - ref[FEATURES]).abs().max().max()
+    assert gap < 1e-3, f"reference/weekly_panel.csv와 다른 패널입니다 (최대 차 {gap})"
+    return p
+
+
 def shap_weekly() -> None:
     import shap
     from sklearn.ensemble import RandomForestClassifier
 
-    p = pd.read_csv(REF / "weekly_panel.csv")
+    p = weekly_panel()
     d = p.dropna(subset=["y"]).copy()
     d["y"] = d["y"].astype(int)
     rf = RandomForestClassifier(n_estimators=300, min_samples_leaf=5, class_weight="balanced", random_state=0)
     rf.fit(d[FEATURES], d["y"])
-    sv = shap.TreeExplainer(rf).shap_values(d[FEATURES])
+    sv = shap.TreeExplainer(rf).shap_values(d[FEATURES], check_additivity=True)
     sv = sv[:, :, 1] if sv.ndim == 3 else sv[1]  # 양성(다음 주 좁아짐 상위 진입) 쪽
     out = d[["seg", "city", "sex", "AGE", "w", "y"]].reset_index(drop=True)
     out["확률"] = rf.predict_proba(d[FEATURES])[:, 1].round(4)
@@ -90,10 +127,17 @@ def shap_weekly() -> None:
 
 
 def main() -> None:
+    import argparse
+
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--only", choices=["map", "shap"], help="map = 경계·시설만, shap = SHAP만 (공간 원본 없이 돌릴 때)")
+    only = ap.parse_args().only
     OUT.mkdir(parents=True, exist_ok=True)
-    dong_map()
-    facilities()
-    shap_weekly()
+    if only != "shap":
+        dong_map()
+        facilities()
+    if only != "map":
+        shap_weekly()
 
 
 if __name__ == "__main__":
