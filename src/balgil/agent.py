@@ -11,7 +11,8 @@ LLM은 부르지 않는다. 문장은 고정 틀에 계산값을 슬롯으로 �
   match_roster                        명부 교차    ← 가상 명부 (입력 형식: docs/agent_입력형식.md)
   find_counterpart                    상대방 업종·동 점포 수 ← segment_industry · dong_industry_stores
                                       (scripts/build_segment_industry.py). D4 장소 표가 오면 장소까지
-  draft_outreach                      고정 문장 틀
+  counterpart_kind                    먼저 물을 창구(가게 / 경로당) ← 위 + fac_dong (build_facility.py)
+  draft_outreach · inquiry_script     고정 문장 틀, 창구별 문의 문구
   briefing_tables                     D3 화면용 표 넷 (--out)
 아직 안 되는 것 (자원 정제본·종결 형식 확정 뒤, 10/18–20)
   match_resource · log_outcome
@@ -69,6 +70,7 @@ class Inputs:
     dong: pd.DataFrame           # 47동 (터전)
     industry: pd.DataFrame | None = None  # 집단 × 상대방 후보 업종 쏠림 (build_segment_industry.py)
     dong_stores: pd.DataFrame | None = None  # 동 × 업종 점포 수 (같은 스크립트, 상가 원본 필요)
+    facilities: pd.DataFrame | None = None   # 동 × 경로당·도서관 수 (현수 build_facility.py, C3)
     sources: dict = field(default_factory=dict)
 
 
@@ -91,7 +93,8 @@ def load_inputs() -> Inputs:
     dong["ADM_CD"] = dong["ADM_CD"].astype(str)
     src = {"segment": p_seg, "segment_month": p_mon, "breaks": p_brk, "dong": p_dong}
     opt = {}
-    for key, name in [("industry", "segment_industry.parquet"), ("dong_stores", "dong_industry_stores.parquet")]:
+    for key, name in [("industry", "segment_industry.parquet"), ("dong_stores", "dong_industry_stores.parquet"),
+                      ("facilities", "fac_dong.parquet")]:
         path = PROCESSED_DIR / name
         opt[key] = pd.read_parquet(path) if path.exists() else None
         if path.exists():
@@ -258,6 +261,35 @@ def find_counterpart(inp: Inputs, city: str, sex: str, age: str, adm_cd: str | N
     return ind
 
 
+SHOP_PER_CENTER = 3  # 상대방 업종 가게가 경로당의 3배가 안 되는 동은 경로당을 먼저 (10/17 확정 전 초안)
+
+
+def counterpart_kind(inp: Inputs, city: str, sex: str, age: str, adm_cd: str) -> dict:
+    """그 대상자에게 먼저 물을 창구: 가게인가 경로당인가 (#6, #26).
+    춘천 면 지역은 가게가 적고 경로당이 노인 인구 대비 가장 많아(시설 × 터전점수 −0.80), 단골 가게를 전제하면
+    신호가 가장 잘 뜨는 동에서 2단계가 빈다. 그 동의 상대방 업종 가게 수와 경로당·마을회관 수를 견줘 고른다.
+    가게 수나 경로당 수를 모르면 가게로 둔다(기획안 4절 기본값)."""
+    ind = find_counterpart(inp, city, sex, age, adm_cd)
+    shops = int(ind["점포수"].sum()) if ind is not None and "점포수" in ind else None
+    centers = None
+    if inp.facilities is not None:
+        f = inp.facilities[inp.facilities["ADM_CD"].astype(str) == str(adm_cd)]
+        centers = int(f["경로당수"].iloc[0]) if len(f) else None
+    first = "경로당" if shops is not None and centers and shops < SHOP_PER_CENTER * centers else "가게"
+    return {"창구": first, "가게후보": shops, "경로당": centers, "업종": ind}
+
+
+# 문의 문구: 개인정보·"고립 의심" 같은 말 없이 안부 확인으로 연다(기획안 9절). 기관명만 슬롯
+INQUIRY = {
+    "가게": "안녕하세요, {기관}입니다. 겨울철 안부 확인 중인데요, 평소 자주 오시던 어르신 중에 요즘 통 안 보이시는 분이 계실까요?",
+    "경로당": "안녕하세요, {기관}입니다. 겨울철 안부 확인 중인데요, 경로당에 자주 나오시던 어르신 중에 요즘 안 나오시는 분이 계실까요?",
+}
+
+
+def inquiry_script(kind: str, agency: str = "OO동 행정복지센터") -> str:
+    return INQUIRY[kind].format(기관=agency)
+
+
 def match_resource(*_, **__):
     """상태별 자원 후보: 복지로·1365 정제본(res_*.parquet)을 거리·반복성·대면성으로 정렬(기획안 6절)."""
     raise NotImplementedError("자원 정제본(scripts/fetch_welfare_api.py 산출)을 받아 10/18–20에 붙입니다")
@@ -274,6 +306,12 @@ def _counterpart_text(cp: pd.DataFrame | None) -> str:
         return "업종 쏠림 표 없음 (scripts/build_segment_industry.py)"
     has_n = "점포수" in cp
     return " · ".join(f"{r.업종}" + (f" {int(r.점포수)}곳" if has_n else f" {r.비중:.0%}") for r in cp.itertuples())
+
+
+def _window_text(k: dict) -> str:
+    shops = _counterpart_text(k["업종"])
+    centers = f"경로당·마을회관 {k['경로당']}곳" if k["경로당"] is not None else "경로당 수 없음 (scripts/build_facility.py)"
+    return f"경로당 먼저 — {centers} (가게: {shops})" if k["창구"] == "경로당" else f"가게 먼저 — {shops} ({centers})"
 
 
 def draft_outreach(st: State, people: pd.DataFrame | None = None) -> str:
@@ -304,6 +342,8 @@ def draft_outreach(st: State, people: pd.DataFrame | None = None) -> str:
         days = " · ".join(f"{d}일" for d in people["경과일"])
         lines.append(f"〈명부〉 이 칸에 드는 대상자 {int(people['칸_인원'].iloc[0])}명 중 마지막 접촉이 가장 오래된 {len(people)}명 ({days}).")
         lines += [f"  - {r.대상자ID}: 접촉 {r.경과일}일 전 · 〈터전〉 {r.터전} · 〈물어볼 곳〉 {r.물어볼곳}" for r in people.itertuples()]
+        if st.상태.startswith("끊김"):
+            lines += [f"〈문의 문구 · {k}〉 \"{inquiry_script(k)}\"" for k in dict.fromkeys(people["창구"])]
     if st.상태.startswith("끊김") and e.get("동시 끊김"):
         lines.append("▸ 권고: 개별 전화 전에 공통 사건(명절·한파·지역 행사)인지 먼저 확인합니다. 사건이 아니면 1단계 전화부터.")
     elif st.상태.startswith("끊김"):
@@ -348,7 +388,9 @@ def run_week(inp: Inputs, as_of: pd.Timestamp, roster: pd.DataFrame | None = Non
         pp["행정동"] = [g["동"] for g in grounds]
         pp["터전순위"] = [g["순위"] for g in grounds]
         pp["터전"] = [f"{g['동']} 터전 약한 순 {g['순위']}/{g['동 수']}" + (" (하위 20%)" if g["하위 20%"] else "") for g in grounds]
-        pp["물어볼곳"] = [_counterpart_text(find_counterpart(inp, city, sex, age, cd)) for cd in pp["행정동코드"]]
+        kinds = [counterpart_kind(inp, city, sex, age, cd) for cd in pp["행정동코드"]]
+        pp["창구"] = [k["창구"] for k in kinds]
+        pp["물어볼곳"] = [_window_text(k) for k in kinds]
         people[st.집단] = pp
     return Week(as_of, states, people)
 
@@ -406,8 +448,9 @@ def briefing_tables(inp: Inputs, as_of: pd.Timestamp, roster: pd.DataFrame | Non
         "경보일_공통충격보정": int(alarms["경보_공통충격보정"]),
     }])
     people = (pd.concat([p.assign(집단=k) for k, p in wk.people.items()], ignore_index=True)
-              [["집단", "대상자ID", "명부종류", "경과일", "행정동코드", "행정동", "터전순위", "물어볼곳"]]
-              if wk.people else pd.DataFrame(columns=["집단", "대상자ID", "명부종류", "경과일", "행정동코드", "행정동", "터전순위", "물어볼곳"]))
+              [["집단", "대상자ID", "명부종류", "경과일", "행정동코드", "행정동", "터전순위", "창구", "물어볼곳"]]
+              if wk.people else pd.DataFrame(columns=["집단", "대상자ID", "명부종류", "경과일", "행정동코드", "행정동", "터전순위", "창구", "물어볼곳"]))
+    people = people.astype({"경과일": "Int64", "터전순위": "Int64"})
     ground = inp.dong[["도시", "ADM_CD", "ADM_NM", "터전점수_통신", "터전순위_통신"]].copy()
     ground["터전없음후보"] = ground["ADM_CD"].isin(ground_alerts(inp)["ADM_CD"])
     return {"agent_summary": summary, "agent_groups": groups, "agent_people": people, "agent_ground": ground}
