@@ -209,13 +209,75 @@ def rate_state(inp: Inputs, city: str, sex: str, age: str, as_of: pd.Timestamp) 
 ROSTER_COLUMNS = ["대상자ID", "시군구", "성", "연령대", "행정동코드", "마지막접촉일", "명부종류"]
 
 
-def read_roster(path: Path) -> pd.DataFrame:
-    r = pd.read_csv(path, dtype={"행정동코드": str}, encoding="utf-8-sig")
+ROSTER_VALUES = {"시군구": set(CITY_SGG.values()), "성": {"남성", "여성"}, "연령대": set(BREAK_AGES)}
+PLACE_COLUMNS = ["장소ID", "종류", "이름", "행정동코드", "업종", "게이트키퍼"]
+PLACE_KINDS = {"가게", "경로당", "마을회관"}
+
+
+def _bad_rows(df: pd.DataFrame, mask: pd.Series, id_col: str, what: str) -> str:
+    rows = df.loc[mask]
+    fmt = lambda v: v.strftime("%Y-%m-%d") if isinstance(v, pd.Timestamp) else v
+    shown = ", ".join(f"{i}({fmt(v)})" for i, v in zip(rows[id_col].head(5), rows[what].head(5)))
+    return f"{what} 값이 허용 범위 밖인 행 {int(mask.sum())}개: {shown}"
+
+
+def _check_dong(df: pd.DataFrame, inp: Inputs, id_col: str) -> pd.DataFrame:
+    """행정동코드는 SGIS 8자리(dong_code.csv의 ADM_CD 47개)만 받는다. 예전 SK 코드는 바꿔 주고, 그 밖은 멈춘다."""
+    df["행정동코드"] = df["행정동코드"].astype(str).str.strip().replace(_SK_OLD_CODE)
+    bad = ~df["행정동코드"].isin(set(inp.dong["ADM_CD"]))
+    if bad.any():
+        raise ValueError(_bad_rows(df, bad, id_col, "행정동코드")
+                         + " — SGIS 8자리(data/reference/dong_code.csv의 ADM_CD)만 됩니다. 행안부 10자리는 안 됩니다"
+                         " (예전 SK 코드 11230740만 개포3동으로 바꿔 받습니다)")
+    return df
+
+
+def read_roster(path: Path, inp: Inputs, as_of: pd.Timestamp) -> pd.DataFrame:
+    """명부를 읽고 검사한다. 값이 틀린 행이 조용히 교차에서 빠지지 않도록 멈춘다(현수 #27 리뷰).
+    90대는 끊김을 판정하지 않아 일부러 빼는 것이므로 경고만 낸다."""
+    r = pd.read_csv(path, dtype=str, encoding="utf-8-sig")
     missing = [c for c in ROSTER_COLUMNS if c not in r]
     if missing:
         raise ValueError(f"명부에 필수 열이 없습니다: {missing} (docs/agent_입력형식.md)")
-    r["마지막접촉일"] = pd.to_datetime(r["마지막접촉일"])
+    for c in ROSTER_COLUMNS:
+        r[c] = r[c].str.strip()
+    if r["대상자ID"].duplicated().any():
+        raise ValueError(f"대상자ID가 겹칩니다: {sorted(set(r.loc[r['대상자ID'].duplicated(), '대상자ID']))[:5]}")
+    old = r["연령대"] == "90대"
+    if old.any():
+        print(f"[경고] 90대 {int(old.sum())}명은 끊김 판정 대상이 아니라 교차에서 뺍니다")
+        r = r[~old].copy()
+    for c, ok in ROSTER_VALUES.items():
+        bad = ~r[c].isin(ok)
+        if bad.any():
+            raise ValueError(_bad_rows(r, bad, "대상자ID", c) + f" — 허용값 {sorted(ok)}")
+    r = _check_dong(r, inp, "대상자ID")
+    r["마지막접촉일"] = pd.to_datetime(r["마지막접촉일"], errors="coerce")
+    if r["마지막접촉일"].isna().any():
+        raise ValueError(_bad_rows(r, r["마지막접촉일"].isna(), "대상자ID", "대상자ID") + " — 마지막접촉일은 YYYY-MM-DD")
+    late = r["마지막접촉일"] > as_of
+    if late.any():
+        raise ValueError(_bad_rows(r, late, "대상자ID", "마지막접촉일")
+                         + f" — 기준일 {as_of:%Y-%m-%d}보다 늦습니다. 접촉일은 가장 이른 시연 기준일 이전으로 만듭니다")
     return r
+
+
+def read_places(path: Path, inp: Inputs) -> pd.DataFrame:
+    """발길이 닿던 곳 표(D4)를 읽고 검사한다. 행정동코드를 문자열로 고정한다 — 정수로 읽히면 비교가 0건이 된다."""
+    p = pd.read_csv(path, dtype=str, encoding="utf-8-sig")
+    missing = [c for c in PLACE_COLUMNS if c not in p]
+    if missing:
+        raise ValueError(f"장소 표에 필수 열이 없습니다: {missing} (docs/agent_입력형식.md 2절)")
+    for c in PLACE_COLUMNS:
+        p[c] = p[c].fillna("").str.strip()
+    for c, ok in {"종류": PLACE_KINDS, "게이트키퍼": {"Y", "N"}}.items():
+        bad = ~p[c].isin(ok)
+        if bad.any():
+            raise ValueError(_bad_rows(p, bad, "장소ID", c) + f" — 허용값 {sorted(ok)}")
+    shop_no_ind = (p["종류"] == "가게") & (p["업종"] == "")
+    if shop_no_ind.any():
+        raise ValueError(_bad_rows(p, shop_no_ind, "장소ID", "업종") + " — 가게는 카드 업종 이름이 필요합니다")
+    return _check_dong(p, inp, "장소ID")
 
 
 def match_roster(roster: pd.DataFrame, city: str, sex: str, age: str, as_of: pd.Timestamp, top_n: int = 3) -> pd.DataFrame:
@@ -462,12 +524,16 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="발길 에이전트 주간 브리핑 (D1 뼈대)")
     ap.add_argument("--as-of", default=None, help="기준일 YYYY-MM-DD (기본: 끊김 자료의 마지막 날)")
     ap.add_argument("--roster", type=Path, default=None, help="가상 명부 CSV (docs/agent_입력형식.md)")
-    ap.add_argument("--top", type=int, default=3)
+    ap.add_argument("--places", type=Path, default=None, help="발길이 닿던 곳 CSV (D4). 지금은 형식 검사만, 브리핑 연결은 10/18–20")
+    ap.add_argument("--top", type=int, default=3, help="끊긴 칸마다 올릴 대상자 수 (기획안 4절 상위 N명)")
     ap.add_argument("--out", type=Path, default=None, help="D3 화면용 표를 쓸 폴더 (예: data/processed/agent)")
     a = ap.parse_args()
     inp = load_inputs()
     as_of = pd.Timestamp(a.as_of) if a.as_of else inp.breaks["date"].max()
-    roster = read_roster(a.roster) if a.roster else None
+    roster = read_roster(a.roster, inp, as_of) if a.roster else None
+    if a.places:
+        places = read_places(a.places, inp)
+        print(f"장소 표 검사 통과: {len(places)}곳 ({places['종류'].value_counts().to_dict()})\n")
     print(weekly_briefing(inp, as_of, roster, a.top))
     if a.out:
         a.out.mkdir(parents=True, exist_ok=True)
