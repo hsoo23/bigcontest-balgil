@@ -11,7 +11,7 @@ LLM은 부르지 않는다. 문장은 고정 틀에 계산값을 슬롯으로 �
   match_roster                        명부 교차    ← 가상 명부 (입력 형식: docs/agent_입력형식.md)
   find_counterpart                    상대방 업종·동 점포 수 ← segment_industry · dong_industry_stores
                                       (scripts/build_segment_industry.py). D4 장소 표가 오면 장소까지
-  counterpart_kind                    먼저 물을 창구(가게 / 경로당) ← 위 + fac_dong (build_facility.py)
+  counterpart_kind                    먼저 물을 창구(가게 / 경로당·마을회관) ← 위 + fac_dong (build_facility.py)
   draft_outreach · inquiry_script     고정 문장 틀, 창구별 문의 문구
   briefing_tables                     D3 화면용 표 넷 (--out)
 아직 안 되는 것 (자원 정제본·종결 형식 확정 뒤, 10/18–20)
@@ -246,7 +246,7 @@ def find_counterpart(inp: Inputs, city: str, sex: str, age: str, adm_cd: str | N
                      places: pd.DataFrame | None = None, n: int = 3) -> pd.DataFrame | None:
     """발길이 닿던 곳 후보 (기획안 4절 2단계).
     ① 집단의 평소 업종 쏠림 → ② 대상자 동의 그 업종 점포 수(상가) → ③ D4 장소 표가 있으면 그 동의 해당 업종
-    가게와 경로당·마을회관을 게이트키퍼 지정 순으로 (#6: 가게가 적은 동은 경로당이 창구). 상호는 상가에서 내지 않는다."""
+    가게와 경로당·마을회관을 게이트키퍼 지정 순으로 (#6: 가게가 적은 동은 경로당·마을회관이 창구). 상호는 상가에서 내지 않는다."""
     ind = counterpart_industries(inp, city, sex, age, n)
     if ind is None:
         return None
@@ -265,24 +265,26 @@ SHOP_PER_CENTER = 3  # 상대방 업종 가게가 경로당의 3배가 안 되�
 
 
 def counterpart_kind(inp: Inputs, city: str, sex: str, age: str, adm_cd: str) -> dict:
-    """그 대상자에게 먼저 물을 창구: 가게인가 경로당인가 (#6, #26).
-    춘천 면 지역은 가게가 적고 경로당이 노인 인구 대비 가장 많아(시설 × 터전점수 −0.80), 단골 가게를 전제하면
-    신호가 가장 잘 뜨는 동에서 2단계가 빈다. 그 동의 상대방 업종 가게 수와 경로당·마을회관 수를 견줘 고른다.
-    가게 수나 경로당 수를 모르면 가게로 둔다(기획안 4절 기본값)."""
+    """그 대상자에게 먼저 물을 창구: 가게인가 경로당·마을회관인가 (#6, #26).
+    춘천 면 지역은 가게가 적고 60세+ 천 명당 경로당이 많다(경로당+도서관 × 터전점수, 춘천 −0.80, n=25 — 춘천 터전점수가
+    도농 축을 따르므로 "면 지역에 경로당이 많다"까지만; 수치는 10/17 수치표). 단골 가게를 전제하면 터전점수가 낮아
+    확인 창구가 가장 필요한 동에서 2단계가 빈다. 그 동의 상대방 업종 가게 수와 경로당·마을회관 수를 견줘 고른다.
+    가게 수나 경로당 수를 모르면 가게로 둔다(기획안 4절 기본값).
+    데이터가 주는 것은 후보 위치까지다. 실제로 다니던 곳·연락 경로는 본인 등록(D2)으로만 받는다(07_에이전트 7.5)."""
     ind = find_counterpart(inp, city, sex, age, adm_cd)
     shops = int(ind["점포수"].sum()) if ind is not None and "점포수" in ind else None
     centers = None
     if inp.facilities is not None:
         f = inp.facilities[inp.facilities["ADM_CD"].astype(str) == str(adm_cd)]
         centers = int(f["경로당수"].iloc[0]) if len(f) else None
-    first = "경로당" if shops is not None and centers and shops < SHOP_PER_CENTER * centers else "가게"
+    first = "경로당·마을회관" if shops is not None and centers and shops < SHOP_PER_CENTER * centers else "가게"
     return {"창구": first, "가게후보": shops, "경로당": centers, "업종": ind}
 
 
 # 문의 문구: 개인정보·"고립 의심" 같은 말 없이 안부 확인으로 연다(기획안 9절). 기관명만 슬롯
 INQUIRY = {
     "가게": "안녕하세요, {기관}입니다. 겨울철 안부 확인 중인데요, 평소 자주 오시던 어르신 중에 요즘 통 안 보이시는 분이 계실까요?",
-    "경로당": "안녕하세요, {기관}입니다. 겨울철 안부 확인 중인데요, 경로당에 자주 나오시던 어르신 중에 요즘 안 나오시는 분이 계실까요?",
+    "경로당·마을회관": "안녕하세요, {기관}입니다. 겨울철 안부 확인 중인데요, 경로당(마을회관)에 자주 나오시던 어르신 중에 요즘 안 나오시는 분이 계실까요?",
 }
 
 
@@ -311,7 +313,7 @@ def _counterpart_text(cp: pd.DataFrame | None) -> str:
 def _window_text(k: dict) -> str:
     shops = _counterpart_text(k["업종"])
     centers = f"경로당·마을회관 {k['경로당']}곳" if k["경로당"] is not None else "경로당 수 없음 (scripts/build_facility.py)"
-    return f"경로당 먼저 — {centers} (가게: {shops})" if k["창구"] == "경로당" else f"가게 먼저 — {shops} ({centers})"
+    return f"경로당·마을회관 먼저 — {centers} (가게: {shops})" if k["창구"] == "경로당·마을회관" else f"가게 먼저 — {shops} ({centers})"
 
 
 def draft_outreach(st: State, people: pd.DataFrame | None = None) -> str:
@@ -347,7 +349,7 @@ def draft_outreach(st: State, people: pd.DataFrame | None = None) -> str:
     if st.상태.startswith("끊김") and e.get("동시 끊김"):
         lines.append("▸ 권고: 개별 전화 전에 공통 사건(명절·한파·지역 행사)인지 먼저 확인합니다. 사건이 아니면 1단계 전화부터.")
     elif st.상태.startswith("끊김"):
-        lines.append("▸ 권고: 1단계 전화. 닿지 않으면 본인이 등록한 발길이 닿던 곳(단골 가게·경로당)에 문의"
+        lines.append("▸ 권고: 1단계 전화. 닿지 않으면 본인이 등록한 발길이 닿던 곳(단골 가게·경로당·마을회관)에 문의"
                      + (" → 방문 전 복지서비스 후보를 붙입니다." if "빨강" in st.상태 else "."))
     elif st.상태 == "좁아짐":
         lines.append("▸ 권고: 사람이 아니라 동 단위 자원(프로그램·봉사 일감)으로 냅니다.")
