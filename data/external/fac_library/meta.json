@@ -6,6 +6,6 @@
   "spatial_unit": "시설 좌표(WGS84)",
   "free": true,
   "note": "Open API(https://api.data.go.kr/openapi/tn_pubr_public_lbrry_api)로 전국 3,597건을 1000건씩 받았다. 포털 파일 다운로드는 5만 건 상한에 잘려 쓰지 않는다. 합친 CSV를 이 폴더에 두고(git에 올림), 페이지별 원본 응답(JSON)은 raw/에 로컬로만 둔다. 다시 받으려면 python scripts/fetch_facility_api.py fac_library",
-  "reference_date": "",
+  "reference_date": "지자체별 데이터기준일자(referenceDate) — 강남 2025-12-26, 춘천 2025-11-12~2026-05-18",
   "license": "이용허락범위 제한 없음 (공공데이터포털 메타데이터 기준, 무료·공개)"
 }
