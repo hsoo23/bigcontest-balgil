@@ -9,7 +9,8 @@
 원본 응답(XML)은 data/external/<슬러그>/raw/에 그대로 보관한다. 대회 규정상
 활용한 원본 파일을 제출해야 하기 때문이다.
 
-실행: python scripts/fetch_welfare_api.py
+실행: python scripts/fetch_welfare_api.py              API로 받아 원본 XML과 정제본을 새로 만든다 (키 필요)
+      python scripts/fetch_welfare_api.py --from-raw   올려 둔 원본 XML만 읽어 정제본을 다시 만든다 (키 없이, 재현용)
 """
 from __future__ import annotations
 
@@ -86,16 +87,22 @@ def request(endpoint: str, params: dict, key: str, retries: int = 5) -> str:
             time.sleep(5 * (attempt + 1))
 
 
-def fetch_all(slug: str, params: dict, key: str, tag: str, label: str) -> pd.DataFrame:
-    """페이지를 끝까지 돌며 수집하고 원본 XML을 보관한다."""
+def fetch_all(slug: str, params: dict, key: str | None, tag: str, label: str) -> pd.DataFrame:
+    """페이지를 끝까지 돌며 수집하고 원본 XML을 보관한다. key가 None이면 API 대신 보관한 원본을 읽는다."""
     src = SOURCES[slug]
     raw_dir = EXTERNAL_DIR / slug / "raw"
     raw_dir.mkdir(parents=True, exist_ok=True)
 
     rows, page, total = [], 1, None
     while True:
-        body = request(src["endpoint"], {**params, "pageNo": str(page), "numOfRows": str(PAGE_SIZE)}, key)
-        (raw_dir / f"{label}_p{page:03d}.xml").write_text(body, encoding="utf-8")
+        path = raw_dir / f"{label}_p{page:03d}.xml"
+        if key is None:
+            if not path.exists():
+                raise SystemExit(f"원본이 없습니다: {path.relative_to(ROOT)} — 키로 한 번 수집해야 합니다")
+            body = path.read_text(encoding="utf-8")
+        else:
+            body = request(src["endpoint"], {**params, "pageNo": str(page), "numOfRows": str(PAGE_SIZE)}, key)
+            path.write_text(body, encoding="utf-8")
 
         if total is None:
             match = re.search(r"totalCount>\s*(\d+)", body)
@@ -108,7 +115,8 @@ def fetch_all(slug: str, params: dict, key: str, tag: str, label: str) -> pd.Dat
         if not page_rows or len(rows) >= total:
             break
         page += 1
-        time.sleep(SLEEP)
+        if key is not None:
+            time.sleep(SLEEP)
 
     print(f"  {label}: {len(rows):,}건 (totalCount {total:,}, {page}페이지)")
     return pd.DataFrame(rows)
@@ -131,7 +139,15 @@ def write_meta(slug: str, note: str) -> None:
 
 
 def main() -> None:
-    key = load_key()
+    import argparse
+
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--from-raw", action="store_true", help="API를 부르지 않고 data/external/<슬러그>/raw/ 원본만 읽는다")
+    from_raw = ap.parse_args().from_raw
+    key = None if from_raw else load_key()
+    if from_raw:  # 수집일이 바뀌지 않게 meta.json은 건드리지 않는다
+        global write_meta
+        write_meta = lambda *_: None  # noqa: E731
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
     print("■ 중앙부처 복지서비스")
@@ -164,8 +180,9 @@ def main() -> None:
     print("\n■ 대상 지역 봉사 일감")
     print(target.groupby("지역").size().to_string())
 
-    print(f"\n수집 완료 — 중앙부처 {len(central):,} · 지자체 {len(local):,} · 봉사 {len(volunteer):,}건")
-    print("원본 XML은 data/external/<슬러그>/raw/에 보관했습니다.")
+    print(f"\n{'원본에서 다시 만듦' if from_raw else '수집 완료'} — 중앙부처 {len(central):,} · 지자체 {len(local):,} · 봉사 {len(volunteer):,}건")
+    if not from_raw:
+        print("원본 XML은 data/external/<슬러그>/raw/에 보관했습니다.")
 
 
 if __name__ == "__main__":
