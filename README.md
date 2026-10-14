@@ -79,6 +79,7 @@ python scripts/fetch_facility_api.py  # 경로당·도서관 전국 전체를 Op
 python scripts/build_facility.py      # 경로당·도서관 좌표 → 행정동, 동별 시설 수 (C3)
 python scripts/build_ground.py        # 47개 동 터전 표(통신·상가·시설) → data/reference/dong_ground.csv (C3, git에 올림)
 python scripts/build_weather.py       # ASOS 일자 × 시군구 기상 테이블 (B4)
+python scripts/fetch_welfare_api.py   # 복지로·1365 자원 목록 받기 (.env 키 필요, 키 없으면 --from-raw로 올린 원본에서 다시 만듦)
 python scripts/build_features.py      # 지표 산출
 ```
 
