@@ -79,6 +79,8 @@ python scripts/fetch_facility_api.py  # 경로당·도서관 전국 전체를 Op
 python scripts/build_facility.py      # 경로당·도서관 좌표 → 행정동, 동별 시설 수 (C3)
 python scripts/build_ground.py        # 47개 동 터전 표(통신·상가·시설) → data/reference/dong_ground.csv (C3, git에 올림)
 python scripts/build_weather.py       # ASOS 일자 × 시군구 기상 테이블 (B4)
+python scripts/explore_weather.py     # 기상 결합표 → data/reference/weather_daily.csv, 끊김·예상과 대조 (B4, git에 올림)
+python scripts/build_priority.py      # 동 우선순위표·도달 효율 → data/reference/dong_priority.csv, reach_efficiency.csv (C5, git에 올림)
 python scripts/build_features.py      # 지표 산출
 ```
 

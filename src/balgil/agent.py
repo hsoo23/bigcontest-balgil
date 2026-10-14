@@ -6,6 +6,7 @@ LLM은 부르지 않는다. 문장은 고정 틀에 계산값을 슬롯으로 �
 지금 되는 것 (데이터로 되는 도구)
   measure_breadth · measure_quality   양·질      ← features_segment(_month)  (A2, PR #12)
   detect_break · correct_shock        연속성      ← reanalysis break_daily    (b2_continuity, 7일 창)
+  check_weather                       날씨 꼬리표  ← data/reference/weather_daily.csv (B4, PR #31)
   map_ground                          터전        ← features_dong             (A4, PR #12)
   rate_state                          네 상태 판정
   match_roster                        명부 교차    ← 가상 명부 (입력 형식: docs/agent_입력형식.md)
@@ -45,6 +46,8 @@ WINDOW_DAYS = 7
 NARROW_TOP = 7                         # 90대 뺀 32칸 중 좁아짐 상위 7칸(21.9%) — 모델 라벨과 같은 선
 GROUND_BOTTOM = 0.2                    # 도시 안 터전점수 하위 20%를 터전 없음 후보로 (기획안 3절 분위수 기준)
 SEVERITY = {"빨강(필수까지 끊김)": 2, "주황(대면만 끊김)": 1, "-": 0}
+WEATHER_PATH = ROOT / "data" / "reference" / "weather_daily.csv"
+BAD_WEATHER = ["큰비", "폭염", "한파", "대설"]  # 특보 기준을 일자료로 옮긴 근사값 (scripts/explore_weather.py)
 
 # reanalysis/reference/features_dong.csv → 동 패널 열 이름
 _REF_DONG = {"행정동코드": "ADM_CD", "이름(추정)": "ADM_NM", "60대 이상 비중": "60대이상_비중",
@@ -69,6 +72,7 @@ class Inputs:
     dong: pd.DataFrame           # 47동 (터전)
     industry: pd.DataFrame | None = None  # 집단 × 상대방 후보 업종 쏠림 (build_segment_industry.py)
     dong_stores: pd.DataFrame | None = None  # 동 × 업종 점포 수 (같은 스크립트, 상가 원본 필요)
+    weather: pd.DataFrame | None = None  # 일자 × 도시 기상과 궂은 날 표시 (explore_weather.py, git에 올림)
     sources: dict = field(default_factory=dict)
 
 
@@ -96,6 +100,9 @@ def load_inputs() -> Inputs:
         opt[key] = pd.read_parquet(path) if path.exists() else None
         if path.exists():
             src[key] = path
+    if WEATHER_PATH.exists():
+        opt["weather"] = pd.read_csv(WEATHER_PATH, parse_dates=["date"], encoding="utf-8-sig")
+        src["weather"] = WEATHER_PATH
     return Inputs(seg, mon, brk, dong, sources=src, **opt)
 
 
@@ -157,6 +164,20 @@ def correct_shock(inp: Inputs, city: str, sex: str, age: str, as_of: pd.Timestam
     return {"보정 없음": int(w["al0"].sum()), "계절형 보정": int(w["al1"].sum()), "공통 충격 보정": int(w["al2"].sum())}
 
 
+def check_weather(inp: Inputs, city: str, broken_days: list[pd.Timestamp]) -> dict | None:
+    """끊긴 날들의 7일 창 안에 궂은 날(큰비·폭염·한파·대설)이 있었는가 → 「날씨 가능」 꼬리표.
+    break_daily의 날짜는 창의 끝날이라, 첫 끊긴 날 6일 전부터 마지막 끊긴 날까지를 본다.
+    알림은 지우지 않는다 — 기준이 근사값이고, 비 오는 주에 실제로 고립이 깊어질 수도 있다(B4 메모 4절)."""
+    if inp.weather is None or not broken_days:
+        return None
+    lo, hi = min(broken_days) - pd.Timedelta(days=WINDOW_DAYS - 1), max(broken_days)
+    w = inp.weather[(inp.weather["city"] == city) & inp.weather["date"].between(lo, hi)]
+    days = {k: [d.strftime("%m/%d") for d in w.loc[w[k], "date"]] for k in BAD_WEATHER}
+    days = {k: v for k, v in days.items() if v}
+    return {"날씨 가능": bool(days), "궂은 날": days,
+            "요약": " · ".join(f"{k} {len(v)}일({'·'.join(v)})" for k, v in days.items())}
+
+
 # ------------------------------------------------------------------ 터전
 def map_ground(inp: Inputs, adm_cd: str) -> dict:
     """동의 터전(통신). 터전점수는 도시 안 순위 평균이고 낮을수록 약하다. 공급 지표로 쓴다(#6)."""
@@ -198,6 +219,8 @@ def rate_state(inp: Inputs, city: str, sex: str, age: str, as_of: pd.Timestamp) 
         ev["보정"] = correct_shock(inp, city, sex, age, as_of)
         if ev["연속성"]["상태"] != "-":
             color = "빨강" if ev["연속성"]["상태"].startswith("빨강") else "주황"
+            hit = _window(inp, city, sex, age, as_of).query("state != '-'")["date"].tolist()
+            ev["날씨"] = check_weather(inp, city, hit)
             return State(seg_name(city, sex, age), f"끊김({color})", ev)
     return State(seg_name(city, sex, age), "좁아짐" if ev["좁아짐 상위"] else "정상", ev)
 
@@ -291,10 +314,15 @@ def draft_outreach(st: State, people: pd.DataFrame | None = None) -> str:
                          f"줄었습니다(대면 최저 {c['대면 최저(%)']:+d}%, 필수 최저 {c['필수 최저(%)']:+d}%).")
             lines.append(f"〈보정〉 같은 7일에 보정 없이 {s['보정 없음']}일 → 계절 보정 {s['계절형 보정']}일 → "
                          f"같은 도시 30·40대 차감 {s['공통 충격 보정']}일.")
+            wx = e.get("날씨")
+            if wx and wx["날씨 가능"]:
+                lines.append(f"〈날씨 가능〉 끊긴 창 안에 {wx['요약']}. 날씨로 발길이 준 것일 수 있지만, "
+                             "궂은 주에 고립이 깊어지기도 해서 알림은 그대로 둡니다.")
             if e.get("동시 끊김"):
                 k, n = e["동시 끊김"]
+                cands = (["공휴일 주간"] if c["공휴일 주간"] else []) + [f"{t} {len(v)}일" for t, v in (wx or {}).get("궂은 날", {}).items()]
                 lines.append(f"〈동시〉 같은 도시 고령 {n}개 집단 중 {k}개가 같은 7일에 함께 끊겼습니다"
-                             + (" (공휴일 주간과 겹침)" if c["공휴일 주간"] else "")
+                             + (f" (공통 사건 후보: {' · '.join(cands)})" if cands else "")
                              + ". 30·40대를 빼고도 남은 공통 사건일 수 있습니다.")
         else:
             lines.append(f"〈연속성〉 지난 {WINDOW_DAYS}일 끊김 없음.")
@@ -305,7 +333,7 @@ def draft_outreach(st: State, people: pd.DataFrame | None = None) -> str:
         lines.append(f"〈명부〉 이 칸에 드는 대상자 {int(people['칸_인원'].iloc[0])}명 중 마지막 접촉이 가장 오래된 {len(people)}명 ({days}).")
         lines += [f"  - {r.대상자ID}: 접촉 {r.경과일}일 전 · 〈터전〉 {r.터전} · 〈물어볼 곳〉 {r.물어볼곳}" for r in people.itertuples()]
     if st.상태.startswith("끊김") and e.get("동시 끊김"):
-        lines.append("▸ 권고: 개별 전화 전에 공통 사건(명절·한파·지역 행사)인지 먼저 확인합니다. 사건이 아니면 1단계 전화부터.")
+        lines.append("▸ 권고: 개별 전화 전에 공통 사건(명절·큰비·한파·지역 행사)인지 먼저 확인합니다. 사건이 아니면 1단계 전화부터.")
     elif st.상태.startswith("끊김"):
         lines.append("▸ 권고: 1단계 전화. 닿지 않으면 본인이 등록한 발길이 닿던 곳(단골 가게·경로당)에 문의"
                      + (" → 방문 전 복지서비스 후보를 붙입니다." if "빨강" in st.상태 else "."))
@@ -384,7 +412,8 @@ def briefing_tables(inp: Inputs, as_of: pd.Timestamp, roster: pd.DataFrame | Non
         rows.append({
             "기준일": as_of.date(), "집단": st.집단, "도시": city, "성": {"남": "남성", "여": "여성"}[sx], "연령": age,
             "신호": SIGNAL[st.상태], "상태": st.상태, "끊김종류": BREAK_KIND.get(st.상태, ""),
-            "동시끊김": bool(e.get("동시 끊김")), "끊김일수": c.get("끊김 일수", 0), "끊긴날": " ".join(c.get("끊긴 날", [])),
+            "동시끊김": bool(e.get("동시 끊김")), "날씨가능": bool((e.get("날씨") or {}).get("날씨 가능")),
+            "궂은날": (e.get("날씨") or {}).get("요약", ""), "끊김일수": c.get("끊김 일수", 0), "끊긴날": " ".join(c.get("끊긴 날", [])),
             "대면_7일최저_pct": c.get("대면 최저(%)"), "필수_7일최저_pct": c.get("필수 최저(%)"),
             "경보_보정없음": s.get("보정 없음"), "경보_계절보정": s.get("계절형 보정"), "경보_공통충격보정": s.get("공통 충격 보정"),
             "양_유효발길수": round(e["양"]["값"], 2), "양_50대": round(e["양"]["50대"], 2),
@@ -400,6 +429,7 @@ def briefing_tables(inp: Inputs, as_of: pd.Timestamp, roster: pd.DataFrame | Non
         "확인권고_집단": int(groups["상태"].str.startswith("끊김").sum()),
         "지난주_확인권고_집단": sum(st.상태.startswith("끊김") for st in prev.states),
         "빨강": int(sig.get("빨강", 0)), "주황": int(sig.get("주황", 0)), "노랑": int(sig.get("노랑", 0)), "초록": int(sig.get("초록", 0)),
+        "날씨가능_집단": int(groups["날씨가능"].sum()),
         "확인권고_인원": sum(len(p) for p in wk.people.values()) if roster is not None else None,
         # 12집단 × 7일 중 경보일 합. 보정이 경보를 지우기도 하고(명절) 드러내기도 한다(30·40대만 오른 주)
         "경보일_보정없음": int(alarms["경보_보정없음"]), "경보일_계절보정": int(alarms["경보_계절보정"]),
