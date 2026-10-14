@@ -93,7 +93,7 @@ streamlit run app/balgil_app.py             # 탭 4개: 주간 브리핑 · 발�
 # http://localhost:8501/?screen=3 처럼 붙이면 그 화면만 (캡처·데모용)
 ```
 
-화면은 git에 있는 파일만 읽어서 **원본 데이터 없이도 뜹니다** — `reanalysis/reference/`(재분석 결과)와 `data/reference/app/`(지도·시설·SHAP). 원본이 바뀌면 `python scripts/build_app_data.py`로 다시 만듭니다.
+화면은 git에 있는 파일만 읽어서 **원본 데이터 없이도 뜹니다** — `reanalysis/reference/`(재분석 결과)와 `data/reference/app/`(지도·시설·SHAP, 화면 ①의 `agent.py` 주간 표). 원본이 바뀌면 `python scripts/build_app_data.py`로 다시 만듭니다.
 
 ## 검증 스크립트
 
