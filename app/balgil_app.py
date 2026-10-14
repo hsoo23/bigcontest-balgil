@@ -21,6 +21,7 @@
 """
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -101,6 +102,8 @@ def load_agent() -> tuple[pd.DataFrame, pd.DataFrame]:
     summ = pd.read_csv(APP / "agent_summary.csv", parse_dates=["기준일"])
     groups = pd.read_csv(APP / "agent_groups.csv", parse_dates=["기준일"])
     groups["상대방업종"] = groups["상대방업종"].fillna("")
+    if "궂은날" in groups:  # agent.py 날씨 꼬리표(#31 수경). 표를 그 뒤에 다시 만들어야 열이 생긴다
+        groups["궂은날"] = groups["궂은날"].fillna("")
     return summ, groups
 
 
@@ -185,11 +188,14 @@ def screen_briefing():
     st.write("")
     g["_o"] = g["신호"].map(SIGNAL_ORDER)
     same = g[g["동시끊김"]].groupby("도시").size()
+    has_wx = "날씨가능" in g
     rows = []
     for _, r in g.sort_values(["_o", "집단"]).iterrows():
         label, color = SIGNAL[r["신호"]]
         broken = r["신호"] in ("빨강", "주황")
         rows.append({
+            # 알림은 지우지 않고 꼬리표만 단다(B4 메모 4절). 상태 색이 아니라 글자로만 보인다
+            "날씨 가능": ui.esc(re.sub(r"\([^)]*\)", "", r["궂은날"])) if has_wx and broken and r["날씨가능"] else "—",
             "신호": ui.badge(label, color),
             "집단": ui.esc(r["집단"]),
             "끊긴 날": f"{int(r['끊김일수'])}일" if broken else "—",
@@ -199,10 +205,12 @@ def screen_briefing():
             "다음 행동": ui.esc(next_action(r, int(same.get(r["도시"], 0)))),
             "_calm": r["신호"] == "초록",
         })
-    html(ui.table([("신호", ""), ("집단", ""), ("끊긴 날", "n"), ("대면 발길 최저", "n"), ("필수 발길 최저", "n"),
-                   ("평소 닿던 업종", "m"), ("다음 행동", "m")], rows, dim_key="_calm"))
+    cols = [("신호", ""), ("집단", ""), ("끊긴 날", "n"), ("대면 발길 최저", "n"), ("필수 발길 최저", "n")]
+    cols += [("날씨 가능", "m")] if has_wx else []
+    html(ui.table(cols + [("평소 닿던 업종", "m"), ("다음 행동", "m")], rows, dim_key="_calm"))
     st.caption("D1 agent.py 판정입니다(build_app_data.py가 매주 일요일 기준으로 돌린 표). 발길 변화는 지난 7일 창이고, "
-               "계절·같은 도시 30·40대 공통 충격을 보정한 값입니다. 노랑(좁아짐)은 6개월 평균이라 주마다 바뀌지 않습니다. "
+               "계절·같은 도시 30·40대 공통 충격을 보정한 값입니다. 「날씨 가능」은 끊긴 창 안에 궂은 날(특보 기준 근사)이 있었다는 "
+               "꼬리표이고, 알림을 지우지 않습니다. 노랑(좁아짐)은 6개월 평균이라 주마다 바뀌지 않습니다. "
                "「평소 닿던 업종」은 6개월 평소 결제가 몰린 업종이고, 실제 가게·경로당은 본인 등록으로만 정합니다.")
 
 
