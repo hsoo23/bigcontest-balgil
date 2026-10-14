@@ -27,10 +27,12 @@ from scipy.stats import spearmanr  # noqa: E402
 
 from balgil.data import PROCESSED_DIR  # noqa: E402
 from balgil.features import is_stay_store  # noqa: E402
+from build_dong_panel import RANK_BY  # noqa: E402
 
 OUT = ROOT / "data" / "reference" / "dong_ground.csv"
-# build_dong_panel.RANK_BY에서 60대 비중을 뺀 세 항목 (낮을수록 터전이 약하다)
-RANK_NO_SHARE = [("저녁비중", True), ("일요일_평일비", True), ("겨울유지", True)]
+# A4 터전점수 항목에서 60대 비중만 뺀다 (A4 항목이 바뀌면 같이 따라간다)
+RANK_NO_SHARE = [(c, asc) for c, asc in RANK_BY if c != "60대이상_비중"]
+assert len(RANK_NO_SHARE) == len(RANK_BY) - 1
 
 
 def build() -> pd.DataFrame:
