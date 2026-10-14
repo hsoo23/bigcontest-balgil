@@ -5,14 +5,15 @@
 
 산출
   dong_map.geojson   47개 동 경계(단순화, WGS84) + 터전 지표
-                     터전점수_통신·순위(A4), 60세+ 천 명당 체류형 점포(C2)·경로당·도서관(C3)
+                     터전 표(build_ground.py — 통신 A4, 상가 C2, 시설 C3)와 같은 값
   facilities.csv     경로당·마을회관·도서관 591곳 좌표 (C3)
   shap_weekly.csv    좁아짐 분류 모델(재분석 b3, 랜덤포레스트)의 집단×주 SHAP 값과 예측 확률
   agent_summary.csv  D1 agent.py briefing_tables()를 매주 일요일 기준으로 돌린 요약 (화면 ①)
   agent_groups.csv   같은 표의 12집단 × 주 신호·끊김 종류·상대방 업종 (화면 ①)
                      상대방 업종은 segment_industry(git 제외)가 있어야 채워진다 → 원본이 있는 PC에서 만든다
 
-선행: build_spatial.py → build_dong_panel.py → build_facility.py, agent 표는 build_segment_industry.py
+선행: build_spatial.py → build_dong_panel.py → build_facility.py (터전 값은 build_ground.build()를 그대로 쓴다),
+      agent 표는 build_segment_industry.py
       SHAP은 reanalysis/a0_load_clean.py 산출(card*.pkl)로 b3 패널을 반올림 없이 다시 만들어 쓴다
 실행: python scripts/build_app_data.py [--only map|shap|agent]  (requirements.txt 고정 버전: scikit-learn 1.7.2, shap 0.48.0)
 주의: 같은 버전이어도 macOS arm64에서는 b3 랜덤포레스트가 reference/model_score.csv와 조금 다르게 나온다
@@ -30,7 +31,6 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import pandas as pd  # noqa: E402
 
 from balgil.data import PROCESSED_DIR  # noqa: E402
-from balgil.features import is_stay_store  # noqa: E402
 from build_spatial import load_dong  # noqa: E402
 
 OUT = ROOT / "data" / "reference" / "app"
@@ -42,27 +42,13 @@ FEATURES = ["breadth_z", "stay_z", "narrow", "d_narrow", "d_stay_z", "d_breadth_
 
 
 def dong_map() -> None:
+    from build_ground import build
+
     dong = load_dong()
     panel = pd.read_parquet(PROCESSED_DIR / "features_dong.parquet")
-    fac = pd.read_parquet(PROCESSED_DIR / "fac_dong.parquet")[["ADM_CD", "경로당수", "도서관수"]]
-    store = pd.read_parquet(PROCESSED_DIR / "store_adm.parquet")
-    stay = store[is_stay_store(store)].groupby("ADM_CD").size().rename("체류형점포수")
-    hh = pd.read_parquet(PROCESSED_DIR / "ext_single_household.parquet")
-    pop = hh[hh["연령대"].isin(["60대", "70대이상"])].groupby("ADM_CD")["인구수"].sum().rename("인구_60세이상")
-
-    keep = ["ADM_CD", "도시", "터전점수_통신", "터전순위_통신", "60대이상_비중", "저녁비중", "일요일_평일비", "겨울유지"]
-    g = (
-        dong[["ADM_CD", "ADM_NM", "SGG_NM", "geometry"]]
-        .merge(panel[keep], on="ADM_CD", how="left")
-        .merge(fac, on="ADM_CD", how="left")
-        .merge(stay, on="ADM_CD", how="left")
-        .merge(pop, on="ADM_CD", how="left")
-    )
-    g["체류형점포수"] = g["체류형점포수"].fillna(0).astype(int)
-    per = g["인구_60세이상"] / 1000
-    g["체류형점포_천명당"] = (g["체류형점포수"] / per).round(1)
-    g["경로당_천명당"] = (g["경로당수"] / per).round(2)
-    g["도서관_천명당"] = (g["도서관수"] / per).round(2)
+    keep = ["ADM_CD", "60대이상_비중", "저녁비중", "일요일_평일비", "겨울유지"]
+    g = dong[["ADM_CD", "ADM_NM", "SGG_NM", "geometry"]].merge(
+        build().drop(columns=["SGG_NM", "ADM_NM"]), on="ADM_CD", how="left").merge(panel[keep], on="ADM_CD", how="left")
     g["geometry"] = g.geometry.simplify(SIMPLIFY_M)
     g = g.to_crs("EPSG:4326")
     g.to_file(OUT / "dong_map.geojson", driver="GeoJSON")

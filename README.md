@@ -77,13 +77,14 @@ python scripts/build_spatial.py       # 행정동 기준으로 전 데이터 연
 python scripts/build_dong_code.py     # 47개 동 코드 대조표 → data/reference/dong_code.csv (C1, git에 올림)
 python scripts/fetch_facility_api.py  # 경로당·도서관 전국 전체를 Open API로 받기 (.env 키 필요)
 python scripts/build_facility.py      # 경로당·도서관 좌표 → 행정동, 동별 시설 수 (C3)
+python scripts/build_ground.py        # 47개 동 터전 표(통신·상가·시설) → data/reference/dong_ground.csv (C3, git에 올림)
 python scripts/build_weather.py       # ASOS 일자 × 시군구 기상 테이블 (B4)
 python scripts/build_features.py      # 지표 산출
 ```
 
 정제 규칙은 `src/balgil/data.py`, 지표 정의는 `src/balgil/features.py`에 모여 있습니다.
 
-> **주의**: `features.py`에 알려진 버그가 두 개 있습니다 — `주류판매`가 두 분류에 중복(A3, 수경), 상가 패턴이 체류형 점포 4,015개 누락(커피 2,950 + 욕탕·노래방·도서관, C2, 현수 — `track-c`에서 수정, 오락은 #8 D안대로 노래방만). 10/11까지 각자 고칩니다.
+> `features.py`의 알려진 버그 두 개는 고쳤습니다 — `주류판매` 두 분류 중복(A3, 수경, 중복 검사 assert 추가), 상가 패턴 누락(C2, 현수 — 중분류 정확 비교, 오락은 #8 D안대로 노래방만, 요리 주점·독서실 제외 #24).
 
 ## 담당자 화면 (D3)
 
