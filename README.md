@@ -29,7 +29,7 @@
 ```bash
 git clone https://github.com/hsoo23/balgil.git
 cd balgil
-python -m venv .venv && source .venv/bin/activate   # 윈도우: .venv\Scriptsctivate
+python -m venv .venv && source .venv/bin/activate   # 윈도우: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
@@ -77,13 +77,24 @@ python scripts/build_spatial.py       # 행정동 기준으로 전 데이터 연
 python scripts/build_dong_code.py     # 47개 동 코드 대조표 → data/reference/dong_code.csv (C1, git에 올림)
 python scripts/fetch_facility_api.py  # 경로당·도서관 전국 전체를 Open API로 받기 (.env 키 필요)
 python scripts/build_facility.py      # 경로당·도서관 좌표 → 행정동, 동별 시설 수 (C3)
+python scripts/build_ground.py        # 47개 동 터전 표(통신·상가·시설) → data/reference/dong_ground.csv (C3, git에 올림)
 python scripts/build_weather.py       # ASOS 일자 × 시군구 기상 테이블 (B4)
 python scripts/build_features.py      # 지표 산출
 ```
 
 정제 규칙은 `src/balgil/data.py`, 지표 정의는 `src/balgil/features.py`에 모여 있습니다.
 
-> **주의**: `features.py`에 알려진 버그가 두 개 있습니다 — `주류판매`가 두 분류에 중복(A3, 수경), 상가 패턴이 체류형 점포 4,015개 누락(커피 2,950 + 욕탕·노래방·도서관, C2, 현수 — `track-c`에서 수정, 오락은 #8 D안대로 노래방만). 10/11까지 각자 고칩니다.
+> `features.py`의 알려진 버그 두 개는 고쳤습니다 — `주류판매` 두 분류 중복(A3, 수경, 중복 검사 assert 추가), 상가 패턴 누락(C2, 현수 — 중분류 정확 비교, 오락은 #8 D안대로 노래방만, 요리 주점·독서실 제외 #24).
+
+## 담당자 화면 (D3)
+
+```bash
+pip install -r app/requirements-app.txt     # 분석 고정 버전 + streamlit·folium
+streamlit run app/balgil_app.py             # 탭 4개: 주간 브리핑 · 발길 상세 · 지도 · 보정 전·후
+# http://localhost:8501/?screen=3 처럼 붙이면 그 화면만 (캡처·데모용)
+```
+
+화면은 git에 있는 파일만 읽어서 **원본 데이터 없이도 뜹니다** — `reanalysis/reference/`(재분석 결과)와 `data/reference/app/`(지도·시설·SHAP). 원본이 바뀌면 `python scripts/build_app_data.py`로 다시 만듭니다.
 
 ## 검증 스크립트
 
@@ -123,8 +134,8 @@ reports/         자동 생성 리포트
 | 개념·설계 | 확정 (「발길」 네 면) |
 | 업종 분류 | **확정** — 확정안 + 오락 D안(노래방만 체류형), 제과점 제외 유지 ([#2](https://github.com/hsoo23/bigcontest-balgil/issues/2) 결정, #9·#13 머지) |
 | 지표 산출 | **패널 2종 완료** — `features_segment`(36칸)·`features_dong`(47동), 결측 0 (#12 머지, 목표 10/13보다 빠름) |
-| 모델 | 재분석 2개 **재실행 완료**. **통합본 4개는 코드가 없어 재실행 불가** ([#14](https://github.com/hsoo23/bigcontest-balgil/issues/14)) |
-| 에이전트 | `agent.py` 미보유(#14) — D1에서 새로 작성. 데이터로 되는 도구부터 10/11 시작 |
+| 모델 | 재분석 2개 **재실행 완료**, 재현 17/17 (#16). **통합본 4개는 코드가 없어 재실행 불가** ([#14](https://github.com/hsoo23/bigcontest-balgil/issues/14)) |
+| 에이전트 | `src/balgil/agent.py` **뼈대** — 양·질·끊김·보정·터전·상태 판정·명부 교차·문장 틀. 상대방·자원·종결은 D4 가상 데이터 뒤(10/18–20). 실행 `python scripts/run_agent.py`, 입력 형식 `docs/agent_입력형식.md` |
 | 화면 | 미착수 (10/12 시작) |
 | 제출 마감 | **10/26(월) 확정.** 본 제출물은 **발표자료** ([제출요건](docs/제출요건.md)) |
 
