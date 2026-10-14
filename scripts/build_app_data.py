@@ -8,10 +8,14 @@
                      터전 표(build_ground.py — 통신 A4, 상가 C2, 시설 C3)와 같은 값
   facilities.csv     경로당·마을회관·도서관 591곳 좌표 (C3)
   shap_weekly.csv    좁아짐 분류 모델(재분석 b3, 랜덤포레스트)의 집단×주 SHAP 값과 예측 확률
+  agent_summary.csv  D1 agent.py briefing_tables()를 매주 일요일 기준으로 돌린 요약 (화면 ①)
+  agent_groups.csv   같은 표의 12집단 × 주 신호·끊김 종류·상대방 업종 (화면 ①)
+                     상대방 업종은 segment_industry(git 제외)가 있어야 채워진다 → 원본이 있는 PC에서 만든다
 
-선행: build_spatial.py → build_dong_panel.py → build_facility.py (터전 값은 build_ground.build()를 그대로 쓴다)
+선행: build_spatial.py → build_dong_panel.py → build_facility.py (터전 값은 build_ground.build()를 그대로 쓴다),
+      agent 표는 build_segment_industry.py
       SHAP은 reanalysis/a0_load_clean.py 산출(card*.pkl)로 b3 패널을 반올림 없이 다시 만들어 쓴다
-실행: python scripts/build_app_data.py [--only shap]  (requirements.txt 고정 버전: scikit-learn 1.7.2, shap 0.48.0)
+실행: python scripts/build_app_data.py [--only map|shap|agent]  (requirements.txt 고정 버전: scikit-learn 1.7.2, shap 0.48.0)
 주의: 같은 버전이어도 macOS arm64에서는 b3 랜덤포레스트가 reference/model_score.csv와 조금 다르게 나온다
       (칸 통째로 빼기 새 진입 16/31 ↔ 18/31). shap_weekly.csv는 reference를 만든 환경에서 만든다.
 """
@@ -111,18 +115,46 @@ def shap_weekly() -> None:
     print(f"shap_weekly.csv: {len(out)}행 (집단 {out['seg'].nunique()} × 주 {out['w'].nunique()})")
 
 
+def agent_weekly() -> None:
+    """화면 ①의 주(월~일)와 agent.py의 7일 창이 같아지도록 일요일을 기준일로 잡는다.
+    명부(D4)는 아직 없어 대상자 표(agent_people)는 만들지 않는다."""
+    from balgil.agent import WINDOW_DAYS, briefing_tables, load_inputs
+
+    inp = load_inputs()
+    first, last = pd.Timestamp(inp.breaks["date"].min()), pd.Timestamp(inp.breaks["date"].max())
+    # 지난주 비교가 되도록 첫 창 앞에 7일이 더 있어야 한다
+    days = pd.date_range(first + pd.Timedelta(days=2 * WINDOW_DAYS - 1), last, freq="W-SUN")
+    summary, groups = [], []
+    for as_of in days:
+        t = briefing_tables(inp, as_of)
+        summary.append(t["agent_summary"])
+        groups.append(t["agent_groups"])
+    pd.concat(summary).to_csv(OUT / "agent_summary.csv", index=False, encoding="utf-8-sig", lineterminator="\n")
+    g = pd.concat(groups)
+    g.to_csv(OUT / "agent_groups.csv", index=False, encoding="utf-8-sig", lineterminator="\n")
+    broken = g["상태"].str.startswith("끊김")
+    filled = int((broken & ~g["상대방업종"].str.contains("표 없음")).sum())
+    print(f"agent 표: 기준일 {len(days)}개 ({days[0]:%m/%d}~{days[-1]:%m/%d}), 집단×주 {len(g)}행, "
+          f"상대방 업종 채운 끊김 {filled}/{int(broken.sum())}")
+    if inp.industry is None:
+        print("  [주의] segment_industry.parquet 없음 — 상대방 업종이 비었습니다. 원본이 있는 PC에서 다시 만드세요")
+
+
 def main() -> None:
     import argparse
 
     ap = argparse.ArgumentParser()
-    ap.add_argument("--only", choices=["map", "shap"], help="map = 경계·시설만, shap = SHAP만 (공간 원본 없이 돌릴 때)")
+    ap.add_argument("--only", choices=["map", "shap", "agent"],
+                    help="map = 경계·시설만, shap = SHAP만 (공간 원본 없이 돌릴 때), agent = 화면 ① agent.py 표만")
     only = ap.parse_args().only
     OUT.mkdir(parents=True, exist_ok=True)
-    if only != "shap":
+    if only in (None, "map"):
         dong_map()
         facilities()
-    if only != "map":
+    if only in (None, "shap"):
         shap_weekly()
+    if only in (None, "agent"):
+        agent_weekly()
 
 
 if __name__ == "__main__":

@@ -5,22 +5,23 @@
 
 읽는 파일은 모두 git에 있다 — 원본 데이터가 없어도 뜬다.
   reanalysis/reference/   재분석 결과 (끊김·보정·주간 패널)
-  data/reference/app/     scripts/build_app_data.py가 만든 지도·시설·SHAP
+  data/reference/app/     scripts/build_app_data.py가 만든 지도·시설·SHAP, 화면 ①의 agent.py 표
 
 원칙
   * 집단 지표(양·질·연속성)는 시군구 × 성 × 연령까지만. 동 단위로 보여 주는 것은 터전뿐이다.
-  * 신호등 5단계와 끊김 종류(대면형·장보기형·병원약국형)는 D1 agent.py가 나오면 바꾼다.
-    지금은 재분석 b2의 주황(대면만 끊김)·빨강(필수까지 끊김)을 그대로 보인다.
+  * 화면 ①은 D1 agent.py 판정(빨강·주황·노랑·초록 넷)을 그대로 보인다. 기획안 3절 5단계의 초록·연두 구분과
+    장보기형·병원약국형 구분은 agent.py에 규칙이 생기면 따라 바꾼다(#4 수경 코멘트).
   * 숫자는 10/17 수치 동결 뒤 docs/최종수치표.md 값으로 교체한다.
 
 겉모양은 app/style.py(Stripe DESIGN.md 토큰). 데이터 색은 dataviz 기준 팔레트(검증: validate_palette.js)
-  상태(주황·빨강)   status serious/critical — 색만으로 말하지 않고 항상 점·글자를 같이 단다
+  신호(빨강·주황·노랑)  status critical/serious/warning — 색만으로 말하지 않고 항상 점·글자를 같이 단다
   터전 지도         순차 파랑 한 가지 (진할수록 값이 큼)
   지도 위 시설 점   주황(경로당)·청록(도서관) — 범주 2·3번, 전 쌍 CVD ΔE 9.2 통과
   SHAP 막대         발산 파랑(확률을 낮춤)·빨강(높임)
 """
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -40,20 +41,13 @@ REF = ROOT / "reanalysis" / "reference"
 APP = ROOT / "data" / "reference" / "app"
 
 # ── 데이터 색 (dataviz reference palette) ──────────────────────────────
-SERIOUS, CRITICAL, CALM = "#ec835a", "#d03b3b", "#c3ccd7"
+SERIOUS, CRITICAL, WARNING, CALM = "#ec835a", "#d03b3b", "#fab219", "#c3ccd7"
 BLUE_RAMP = ["#cde2fb", "#86b6ef", "#3987e5", "#256abf", "#104281"]  # 순차 100·250·400·500·650
 POS, NEG = "#e34948", "#2a78d6"  # 발산: 확률을 높임 / 낮춤
 SERIES = ["#2a78d6", "#eb6834"]  # 범주 1·2번 (선 두 개)
 FAC_COLOR = {"경로당": "#eb6834", "도서관": "#1baf7a"}
 SHADE = "#eef2f7"  # 공통 사건 주간 배경 띠
 
-STATE = {
-    "빨강(필수까지 끊김)": ("빨강", "필수까지 끊김", CRITICAL),
-    "주황(대면만 끊김)": ("주황", "대면만 끊김", SERIOUS),
-    "-": ("평온", "", CALM),
-}
-ORDER = {"빨강(필수까지 끊김)": 2, "주황(대면만 끊김)": 1, "-": 0}
-NEXT_ACTION = "본인 전화 → 닿지 않으면 단골 확인"  # 다섯 마디 4번 (#2)
 
 FEATURE_KO = {
     "m3": "좁아짐 3주 평균", "narrow": "이번 주 좁아짐", "d_narrow": "좁아짐 변화",
@@ -104,6 +98,16 @@ def load_breaks(nomed: bool) -> pd.DataFrame:
 
 
 @st.cache_data
+def load_agent() -> tuple[pd.DataFrame, pd.DataFrame]:
+    summ = pd.read_csv(APP / "agent_summary.csv", parse_dates=["기준일"])
+    groups = pd.read_csv(APP / "agent_groups.csv", parse_dates=["기준일"])
+    groups["상대방업종"] = groups["상대방업종"].fillna("")
+    if "궂은날" in groups:  # agent.py 날씨 꼬리표(#31 수경). 표를 그 뒤에 다시 만들어야 열이 생긴다
+        groups["궂은날"] = groups["궂은날"].fillna("")
+    return summ, groups
+
+
+@st.cache_data
 def load_false_alarm(nomed: bool) -> pd.DataFrame:
     return pd.read_csv(REF / ("nomed_false_alarm.csv" if nomed else "false_alarm.csv"), index_col=0)
 
@@ -136,48 +140,78 @@ def signed(x: float) -> str:
 
 
 # ── ① 주간 브리핑 ──────────────────────────────────────────────────────
+# agent.py(D1) 신호 넷. 색만으로 말하지 않고 항상 점·글자를 같이 단다
+SIGNAL = {
+    "빨강": ("빨강 · 필수형 끊김", CRITICAL),
+    "주황": ("주황 · 대면형 끊김", SERIOUS),
+    "노랑": ("노랑 · 좁아짐", WARNING),
+    "초록": ("초록 · 평온", CALM),
+}
+SIGNAL_ORDER = {"빨강": 0, "주황": 1, "노랑": 2, "초록": 3}
+DEMO_AS_OF = "2025-10-05"  # 시연 기준일 10/01이 든 주(#6 수경 안). 10/17 회의에서 정한 날로 바꾼다
+
+
+def next_action(r: pd.Series, n_same: int) -> str:
+    """agent.py draft_outreach의 권고와 같은 순서 (07_에이전트 7.5, #2)."""
+    if r["신호"] in ("빨강", "주황") and r["동시끊김"]:
+        return f"공통 사건 먼저 확인 — 같은 도시 {n_same}개 집단 동시"
+    if r["신호"] == "빨강":
+        return "본인 전화 → 닿지 않으면 발길이 닿던 곳 → 방문 (복지서비스 후보)"
+    if r["신호"] == "주황":
+        return "본인 전화 → 닿지 않으면 발길이 닿던 곳"
+    if r["신호"] == "노랑":
+        return "동 단위 프로그램·봉사 일감 (사람이 아님)"
+    return "—"
+
+
 def screen_briefing():
     html(ui.heading("①", "주간 브리핑", "이번 주 누구를 먼저 확인할까 — 60대 이상 12개 집단, 보정 후 끊김 신호"))
-    b = load_breaks(nomed=False)
-    weeks = sorted(b["week"].unique())
-    hol_weeks, alert_weeks = set(b.loc[b["holwk"], "week"]), set(b.loc[b["state"] != "-", "week"])
-    default = max(w for w in weeks if w not in hol_weeks and w in alert_weeks)
-    wk = st.select_slider("주 (월요일 시작)", options=weeks, value=default,
-                          format_func=lambda d: f"{pd.Timestamp(d):%m/%d}")
-    cur, prev = b[b["week"] == wk], b[b["week"] == wk - pd.Timedelta(days=7)]
-    worst = lambda df: df.groupby("seg")["state"].agg(lambda s: max(s, key=ORDER.get))  # noqa: E731
-    w_now = worst(cur)
-    n_prev = int((worst(prev) != "-").sum()) if len(prev) else None
-    flagged = int((w_now != "-").sum())
+    summ, groups = load_agent()
+    days = list(summ["기준일"])
+    as_of = st.select_slider("주 (월~일, 지난 7일 창)", options=days, value=pd.Timestamp(DEMO_AS_OF) if
+                             pd.Timestamp(DEMO_AS_OF) in days else days[-1],
+                             format_func=lambda d: f"{d - pd.Timedelta(days=6):%m/%d}~{d:%m/%d}")
+    sm = summ[summ["기준일"] == as_of].iloc[0]
+    g = groups[groups["기준일"] == as_of].copy()
 
     c = st.columns(4)
-    diff = "" if n_prev is None else (f"지난주 {n_prev}개 → {'+' if flagged >= n_prev else ''}{flagged - n_prev}")
-    c[0].markdown(ui.stat("확인 권고 집단", f"{flagged}", diff, unit="/ 12"), unsafe_allow_html=True)
-    c[1].markdown(ui.stat("빨강 · 필수까지 끊김", f"{int((w_now == '빨강(필수까지 끊김)').sum())}", "집단 수",
-                          dot=CRITICAL), unsafe_allow_html=True)
-    c[2].markdown(ui.stat("주황 · 대면만 끊김", f"{int((w_now == '주황(대면만 끊김)').sum())}", "집단 수",
-                          dot=SERIOUS), unsafe_allow_html=True)
-    c[3].markdown(ui.stat("끊긴 날", f"{int((cur['state'] != '-').sum())}", "집단 × 일 (보정 후 남은 알림)"),
+    n, n_prev = int(sm["확인권고_집단"]), int(sm["지난주_확인권고_집단"])
+    c[0].markdown(ui.stat("확인 권고 집단", f"{n}", f"지난주 {n_prev}개 → {n - n_prev:+d}", unit="/ 12"),
+                  unsafe_allow_html=True)
+    c[1].markdown(ui.stat("빨강 · 필수형 끊김", f"{int(sm['빨강'])}", "필수 발길(장보기·병원·약국)까지", dot=CRITICAL),
+                  unsafe_allow_html=True)
+    c[2].markdown(ui.stat("주황 · 대면형 끊김", f"{int(sm['주황'])}", "대면 발길만", dot=SERIOUS), unsafe_allow_html=True)
+    c[3].markdown(ui.stat("보정 뒤 남은 경보일", f"{int(sm['경보일_공통충격보정'])}",
+                          f"집단 × 일 · 보정 없이 {int(sm['경보일_보정없음'])} → 계절 {int(sm['경보일_계절보정'])}"),
                   unsafe_allow_html=True)
 
     st.write("")
+    g["_o"] = g["신호"].map(SIGNAL_ORDER)
+    same = g[g["동시끊김"]].groupby("도시").size()
+    has_wx = "날씨가능" in g
     rows = []
-    for seg, state in sorted(w_now.items(), key=lambda kv: (-ORDER[kv[1]], kv[0])):
-        g = cur[cur["seg"] == seg]
-        name, desc, color = STATE[state]
+    for _, r in g.sort_values(["_o", "집단"]).iterrows():
+        label, color = SIGNAL[r["신호"]]
+        broken = r["신호"] in ("빨강", "주황")
         rows.append({
-            "신호": ui.badge(name + (f" · {desc}" if desc else ""), color),
-            "집단": ui.esc(seg),
-            "끊긴 날": f"{int((g['state'] != '-').sum())}일",
-            "대면 발길 최저": signed(g["face_pct"].min()),
-            "필수 발길 최저": signed(g["ess_pct"].min()),
-            "다음 행동": NEXT_ACTION if state != "-" else "—",
-            "_calm": state == "-",
+            # 알림은 지우지 않고 꼬리표만 단다(B4 메모 4절). 상태 색이 아니라 글자로만 보인다
+            "날씨 가능": ui.esc(re.sub(r"\([^)]*\)", "", r["궂은날"])) if has_wx and broken and r["날씨가능"] else "—",
+            "신호": ui.badge(label, color),
+            "집단": ui.esc(r["집단"]),
+            "끊긴 날": f"{int(r['끊김일수'])}일" if broken else "—",
+            "대면 발길 최저": signed(r["대면_7일최저_pct"]) if broken else "—",
+            "필수 발길 최저": signed(r["필수_7일최저_pct"]) if broken else "—",
+            "평소 닿던 업종": ui.esc(r["상대방업종"]) if broken else "—",
+            "다음 행동": ui.esc(next_action(r, int(same.get(r["도시"], 0)))),
+            "_calm": r["신호"] == "초록",
         })
-    html(ui.table([("신호", ""), ("집단", ""), ("끊긴 날", "n"), ("대면 발길 최저", "n"),
-                   ("필수 발길 최저", "n"), ("다음 행동", "m")], rows, dim_key="_calm"))
-    st.caption("발길 변화는 7일 묶음이고, 계절·같은 도시 30·40대 공통 충격을 보정한 값입니다. "
-               "신호 5단계와 끊김 종류(대면형·장보기형·병원약국형)는 D1 agent.py가 나오면 바뀝니다.")
+    cols = [("신호", ""), ("집단", ""), ("끊긴 날", "n"), ("대면 발길 최저", "n"), ("필수 발길 최저", "n")]
+    cols += [("날씨 가능", "m")] if has_wx else []
+    html(ui.table(cols + [("평소 닿던 업종", "m"), ("다음 행동", "m")], rows, dim_key="_calm"))
+    st.caption("D1 agent.py 판정입니다(build_app_data.py가 매주 일요일 기준으로 돌린 표). 발길 변화는 지난 7일 창이고, "
+               "계절·같은 도시 30·40대 공통 충격을 보정한 값입니다. 「날씨 가능」은 끊긴 창 안에 궂은 날(특보 기준 근사)이 있었다는 "
+               "꼬리표이고, 알림을 지우지 않습니다. 노랑(좁아짐)은 6개월 평균이라 주마다 바뀌지 않습니다. "
+               "「평소 닿던 업종」은 6개월 평소 결제가 몰린 업종이고, 실제 가게·경로당은 본인 등록으로만 정합니다.")
 
 
 # ── ② 발길 상세 ────────────────────────────────────────────────────────
