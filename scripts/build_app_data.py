@@ -121,7 +121,7 @@ def agent_weekly() -> None:
     from balgil.agent import WINDOW_DAYS, briefing_tables, load_inputs
 
     inp = load_inputs()
-    first, last = inp.breaks["date"].min(), inp.breaks["date"].max()
+    first, last = pd.Timestamp(inp.breaks["date"].min()), pd.Timestamp(inp.breaks["date"].max())
     # 지난주 비교가 되도록 첫 창 앞에 7일이 더 있어야 한다
     days = pd.date_range(first + pd.Timedelta(days=2 * WINDOW_DAYS - 1), last, freq="W-SUN")
     summary, groups = [], []
