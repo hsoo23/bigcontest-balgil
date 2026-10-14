@@ -1,0 +1,11 @@
+{
+  "name": "한국사회보장정보원_지자체복지서비스",
+  "provider": "한국사회보장정보원",
+  "url": "https://www.data.go.kr/data/15108347/openapi.do",
+  "collected_at": "2026-10-14",
+  "reference_date": "2026-10-14",
+  "spatial_unit": "시군구",
+  "license": "이용허락범위 제한 없음",
+  "free": true,
+  "note": "복지로 지자체 복지서비스. 강남구·춘천시만 조회"
+}
