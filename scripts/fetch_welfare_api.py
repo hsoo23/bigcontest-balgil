@@ -17,6 +17,7 @@ import json
 import re
 import sys
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import date
@@ -66,10 +67,23 @@ def load_key() -> str:
     raise SystemExit(".env에 DATA_GO_KR_KEY가 없습니다. docs/데이터_수집_가이드.md를 참고하세요.")
 
 
-def request(endpoint: str, params: dict, key: str) -> str:
+def request(endpoint: str, params: dict, key: str, retries: int = 5) -> str:
     query = urllib.parse.urlencode(params, encoding="utf-8") + "&serviceKey=" + urllib.parse.quote(key, safe="")
-    with urllib.request.urlopen(f"{endpoint}?{query}", timeout=60) as resp:
-        return resp.read().decode("utf-8", "replace")
+    # 포털이 가끔 응답하지 않거나 resultCode 99를 준다(10/14 시험에서 다섯 번에 한 번꼴). 잠시 쉬고 다시 묻는다
+    for attempt in range(retries):
+        try:
+            with urllib.request.urlopen(f"{endpoint}?{query}", timeout=60) as resp:
+                body = resp.read().decode("utf-8", "replace")
+            # 포털 오류(예: resultCode 99 UNKNOWN_ERROR)는 totalCount 0으로 와서 0건으로 착각하기 쉽다
+            code = re.search(r"<resultCode>\s*(\w+)\s*<", body)
+            if code and code.group(1) not in ("0", "00"):
+                raise urllib.error.URLError(f"resultCode {code.group(1)}")
+            return body
+        except (urllib.error.URLError, TimeoutError) as e:
+            if attempt == retries - 1:
+                raise
+            print(f"  응답 실패({e}) — {5 * (attempt + 1)}초 뒤 다시 시도")
+            time.sleep(5 * (attempt + 1))
 
 
 def fetch_all(slug: str, params: dict, key: str, tag: str, label: str) -> pd.DataFrame:
@@ -86,7 +100,8 @@ def fetch_all(slug: str, params: dict, key: str, tag: str, label: str) -> pd.Dat
         if total is None:
             match = re.search(r"totalCount>\s*(\d+)", body)
             total = int(match.group(1)) if match else 0
-        items = ElementTree.fromstring(body).iter(tag)
+        # 원본에 공백 대신 제어문자(\x01)가 섞인 페이지가 있다(1365 서울 24페이지). 원본은 그대로 두고 읽을 때만 공백으로 바꾼다
+        items = ElementTree.fromstring(re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", " ", body)).iter(tag)
         page_rows = [{child.tag: (child.text or "").strip() for child in item} for item in items]
         rows.extend(page_rows)
 
