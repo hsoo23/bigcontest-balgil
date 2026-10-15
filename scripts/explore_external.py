@@ -116,7 +116,10 @@ def recount_stay_stores() -> pd.DataFrame:
         print(f"  [{sgg}] 60세+ 천 명당 체류형 점포 — 중위 {d['천명당'].median():.1f}, 변동계수 {cv:.2f}")
         print("    하위3:", ", ".join(f"{r.ADM_NM} {r.천명당}" for r in d.head(3).itertuples()))
         print("    상위3:", ", ".join(f"{r.ADM_NM} {r.천명당}" for r in d.tail(3).itertuples()))
-    print("  → 강남 개포1동(1.4)이 춘천 농촌(사북면 4.1)보다도 낮다. 터전 사막은 도시에도 있다.\n")
+    low = {sgg: m[m["SGG_NM"] == sgg].nsmallest(1, "천명당").iloc[0] for sgg in SGGS}
+    gn, cc = low["서울 강남구"], low["강원 춘천시"]
+    print(f"  → 강남 최하위 {gn.ADM_NM} {gn.천명당} · 춘천 농촌 최하위 {cc.ADM_NM} {cc.천명당} — "
+          "도시 동이 농촌 면과 같은 수준이다. 터전 사막은 도시에도 있다.\n")
     return m
 
 

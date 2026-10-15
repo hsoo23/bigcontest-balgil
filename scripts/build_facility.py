@@ -21,7 +21,7 @@ API(sclWlfrFcltInfoInqirService2)만 제공하는데, 이 API는 좌표·주소�
 선행: build_spatial.py (dong_master와 같은 SGIS 경계를 쓴다)
 실행: python scripts/build_facility.py
 산출: data/processed/fac_adm.parquet  (시설 단위, ADM_CD 포함)
-      data/processed/fac_dong.parquet (47개 동 × 시설 종류별 개수)
+      data/processed/fac_dong.parquet (47개 동 × 시설 종류별 개수. 경로당수는 마을회관 포함, 마을회관수는 그 안의 수)
 """
 from __future__ import annotations
 
@@ -115,6 +115,8 @@ def main() -> None:
         print(sj.groupby(["시설종류", "세부유형"]).size().to_string())
 
     counts = sj.groupby(["ADM_CD", "시설종류"]).size().unstack(fill_value=0).add_suffix("수")
+    # 경로당수는 마을회관을 포함한다(같은 표준데이터). 2단계 창구 종류를 가르려고 마을회관만 따로 센다(#26·#27)
+    counts["마을회관수"] = sj[sj["세부유형"].eq("마을회관")].groupby("ADM_CD").size()
     by_dong = dong[["SGG_NM", "ADM_CD", "ADM_NM"]].merge(counts, on="ADM_CD", how="left").fillna(0)
     num = [c for c in by_dong.columns if c.endswith("수")]
     by_dong[num] = by_dong[num].astype(int)

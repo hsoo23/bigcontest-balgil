@@ -1,0 +1,11 @@
+{
+  "name": "한국사회보장정보원_중앙부처복지서비스",
+  "provider": "한국사회보장정보원",
+  "url": "https://www.data.go.kr/data/15090532/openapi.do",
+  "collected_at": "2026-10-14",
+  "reference_date": "2026-10-14",
+  "spatial_unit": "전국(지역 구분 없음)",
+  "license": "이용허락범위 제한 없음",
+  "free": true,
+  "note": "복지로 중앙부처 복지서비스 목록. API 활용신청 후 인증키로 수집"
+}

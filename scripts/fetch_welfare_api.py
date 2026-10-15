@@ -9,7 +9,8 @@
 원본 응답(XML)은 data/external/<슬러그>/raw/에 그대로 보관한다. 대회 규정상
 활용한 원본 파일을 제출해야 하기 때문이다.
 
-실행: python scripts/fetch_welfare_api.py
+실행: python scripts/fetch_welfare_api.py              API로 받아 원본 XML과 정제본을 새로 만든다 (키 필요)
+      python scripts/fetch_welfare_api.py --from-raw   올려 둔 원본 XML만 읽어 정제본을 다시 만든다 (키 없이, 재현용)
 """
 from __future__ import annotations
 
@@ -17,6 +18,7 @@ import json
 import re
 import sys
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import date
@@ -66,34 +68,55 @@ def load_key() -> str:
     raise SystemExit(".env에 DATA_GO_KR_KEY가 없습니다. docs/데이터_수집_가이드.md를 참고하세요.")
 
 
-def request(endpoint: str, params: dict, key: str) -> str:
+def request(endpoint: str, params: dict, key: str, retries: int = 5) -> str:
     query = urllib.parse.urlencode(params, encoding="utf-8") + "&serviceKey=" + urllib.parse.quote(key, safe="")
-    with urllib.request.urlopen(f"{endpoint}?{query}", timeout=60) as resp:
-        return resp.read().decode("utf-8", "replace")
+    # 포털이 가끔 응답하지 않거나 resultCode 99를 준다(10/14 시험에서 다섯 번에 한 번꼴). 잠시 쉬고 다시 묻는다
+    for attempt in range(retries):
+        try:
+            with urllib.request.urlopen(f"{endpoint}?{query}", timeout=60) as resp:
+                body = resp.read().decode("utf-8", "replace")
+            # 포털 오류(예: resultCode 99 UNKNOWN_ERROR)는 totalCount 0으로 와서 0건으로 착각하기 쉽다
+            code = re.search(r"<resultCode>\s*(\w+)\s*<", body)
+            if code and code.group(1) not in ("0", "00"):
+                raise urllib.error.URLError(f"resultCode {code.group(1)}")
+            return body
+        except (urllib.error.URLError, TimeoutError) as e:
+            if attempt == retries - 1:
+                raise
+            print(f"  응답 실패({e}) — {5 * (attempt + 1)}초 뒤 다시 시도")
+            time.sleep(5 * (attempt + 1))
 
 
-def fetch_all(slug: str, params: dict, key: str, tag: str, label: str) -> pd.DataFrame:
-    """페이지를 끝까지 돌며 수집하고 원본 XML을 보관한다."""
+def fetch_all(slug: str, params: dict, key: str | None, tag: str, label: str) -> pd.DataFrame:
+    """페이지를 끝까지 돌며 수집하고 원본 XML을 보관한다. key가 None이면 API 대신 보관한 원본을 읽는다."""
     src = SOURCES[slug]
     raw_dir = EXTERNAL_DIR / slug / "raw"
     raw_dir.mkdir(parents=True, exist_ok=True)
 
     rows, page, total = [], 1, None
     while True:
-        body = request(src["endpoint"], {**params, "pageNo": str(page), "numOfRows": str(PAGE_SIZE)}, key)
-        (raw_dir / f"{label}_p{page:03d}.xml").write_text(body, encoding="utf-8")
+        path = raw_dir / f"{label}_p{page:03d}.xml"
+        if key is None:
+            if not path.exists():
+                raise SystemExit(f"원본이 없습니다: {path.relative_to(ROOT)} — 키로 한 번 수집해야 합니다")
+            body = path.read_text(encoding="utf-8")
+        else:
+            body = request(src["endpoint"], {**params, "pageNo": str(page), "numOfRows": str(PAGE_SIZE)}, key)
+            path.write_text(body, encoding="utf-8")
 
         if total is None:
             match = re.search(r"totalCount>\s*(\d+)", body)
             total = int(match.group(1)) if match else 0
-        items = ElementTree.fromstring(body).iter(tag)
+        # 원본에 공백 대신 제어문자(\x01)가 섞인 페이지가 있다(1365 서울 24페이지). 원본은 그대로 두고 읽을 때만 공백으로 바꾼다
+        items = ElementTree.fromstring(re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", " ", body)).iter(tag)
         page_rows = [{child.tag: (child.text or "").strip() for child in item} for item in items]
         rows.extend(page_rows)
 
         if not page_rows or len(rows) >= total:
             break
         page += 1
-        time.sleep(SLEEP)
+        if key is not None:
+            time.sleep(SLEEP)
 
     print(f"  {label}: {len(rows):,}건 (totalCount {total:,}, {page}페이지)")
     return pd.DataFrame(rows)
@@ -116,7 +139,15 @@ def write_meta(slug: str, note: str) -> None:
 
 
 def main() -> None:
-    key = load_key()
+    import argparse
+
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--from-raw", action="store_true", help="API를 부르지 않고 data/external/<슬러그>/raw/ 원본만 읽는다")
+    from_raw = ap.parse_args().from_raw
+    key = None if from_raw else load_key()
+    if from_raw:  # 수집일이 바뀌지 않게 meta.json은 건드리지 않는다
+        global write_meta
+        write_meta = lambda *_: None  # noqa: E731
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
     print("■ 중앙부처 복지서비스")
@@ -149,8 +180,9 @@ def main() -> None:
     print("\n■ 대상 지역 봉사 일감")
     print(target.groupby("지역").size().to_string())
 
-    print(f"\n수집 완료 — 중앙부처 {len(central):,} · 지자체 {len(local):,} · 봉사 {len(volunteer):,}건")
-    print("원본 XML은 data/external/<슬러그>/raw/에 보관했습니다.")
+    print(f"\n{'원본에서 다시 만듦' if from_raw else '수집 완료'} — 중앙부처 {len(central):,} · 지자체 {len(local):,} · 봉사 {len(volunteer):,}건")
+    if not from_raw:
+        print("원본 XML은 data/external/<슬러그>/raw/에 보관했습니다.")
 
 
 if __name__ == "__main__":

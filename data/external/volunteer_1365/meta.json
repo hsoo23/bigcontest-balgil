@@ -1,0 +1,11 @@
+{
+  "name": "행정안전부_봉사참여정보서비스_GW",
+  "provider": "행정안전부",
+  "url": "https://www.data.go.kr/data/15157582/openapi.do",
+  "collected_at": "2026-10-14",
+  "reference_date": "2026-10-14",
+  "spatial_unit": "시도·시군구 코드",
+  "license": "이용허락범위 제한 없음",
+  "free": true,
+  "note": "1365 자원봉사 모집 일감. 서울·강원 전체를 받아 시군구 코드로 대상 지역을 거른다"
+}
