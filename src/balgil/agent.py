@@ -361,7 +361,9 @@ def _check_dong(df: pd.DataFrame, inp: Inputs, id_col: str) -> pd.DataFrame:
 
 def read_roster(path: Path, inp: Inputs, as_of: pd.Timestamp) -> pd.DataFrame:
     """명부를 읽고 검사한다. 값이 틀린 행이 조용히 교차에서 빠지지 않도록 멈춘다(현수 #27 리뷰).
-    90대는 끊김을 판정하지 않아 일부러 빼는 것이므로 경고만 낸다."""
+    90대는 끊김을 판정하지 않아 일부러 빼는 것이므로 경고만 낸다.
+    기준일보다 늦은 접촉일은 틀린 값이 아니라 그 주에는 아직 없는 기록이다. 멈추지 않고 경고만 내고,
+    match_roster가 기준일마다 뺀다(#46 리뷰). 화면처럼 한 명부로 여러 주를 돌릴 때 접촉일을 실제처럼 흩어 둘 수 있다."""
     r = pd.read_csv(path, dtype=str, encoding="utf-8-sig")
     missing = [c for c in ROSTER_COLUMNS if c not in r]
     if missing:
@@ -384,8 +386,12 @@ def read_roster(path: Path, inp: Inputs, as_of: pd.Timestamp) -> pd.DataFrame:
         raise ValueError(_bad_rows(r, r["마지막접촉일"].isna(), "대상자ID", "대상자ID") + " — 마지막접촉일은 YYYY-MM-DD")
     late = r["마지막접촉일"] > as_of
     if late.any():
-        raise ValueError(_bad_rows(r, late, "대상자ID", "마지막접촉일")
-                         + f" — 기준일 {as_of:%Y-%m-%d}보다 늦습니다. 접촉일은 가장 이른 시연 기준일 이전으로 만듭니다")
+        # 멈추지 않으므로 연도 오타(2026-…) 같은 실수를 잡을 그물은 이 경고뿐이다 — 누구인지 적는다(#48 윤지 리뷰)
+        rows = r.loc[late]
+        shown = ", ".join(f"{i}({d:%Y-%m-%d})" for i, d in zip(rows["대상자ID"].head(5), rows["마지막접촉일"].head(5)))
+        more = f" 외 {len(rows) - 5}명" if len(rows) > 5 else ""
+        print(f"[경고] 마지막접촉일이 기준일 {as_of:%Y-%m-%d}보다 늦습니다 — {shown}{more} ({len(rows)}명). "
+              "그 기준일의 교차에서 뺍니다 (그 주에는 아직 없는 기록)")
     return r
 
 
@@ -409,8 +415,10 @@ def read_places(path: Path, inp: Inputs) -> pd.DataFrame:
 
 def match_roster(roster: pd.DataFrame, city: str, sex: str, age: str, as_of: pd.Timestamp, top_n: int = 3) -> pd.DataFrame:
     """끊긴 칸(시군구 × 성 × 연령대)으로 명부를 거르고, 마지막 접촉이 오래된 순으로 top_n명.
-    행정동은 거르는 데 쓰지 않는다 — 결과에 붙여 터전과 상대방 후보를 찾는 데만 쓴다."""
-    m = roster[(roster["시군구"] == CITY_SGG[city]) & (roster["성"] == sex) & (roster["연령대"] == age)].copy()
+    행정동은 거르는 데 쓰지 않는다 — 결과에 붙여 터전과 상대방 후보를 찾는 데만 쓴다.
+    접촉일이 기준일보다 늦은 사람은 그 주에는 기록이 없으므로 칸 인원에서도 뺀다."""
+    m = roster[(roster["시군구"] == CITY_SGG[city]) & (roster["성"] == sex) & (roster["연령대"] == age)
+               & (roster["마지막접촉일"] <= as_of)].copy()
     m["경과일"] = (as_of - m["마지막접촉일"]).dt.days
     return m.sort_values("경과일", ascending=False).head(top_n).assign(칸_인원=len(m))
 
@@ -570,6 +578,8 @@ def draft_outreach(st: State, people: pd.DataFrame | None = None, vol_date: str 
         lines += [f"  - {r.대상자ID}: 접촉 {r.경과일}일 전 · 〈터전〉 {r.터전} · 〈물어볼 곳〉 {r.물어볼곳}" for r in people.itertuples()]
         if st.상태.startswith("끊김"):
             lines += [f"〈문의 문구 · {k}〉 \"{inquiry_script(k)}\"" for k in dict.fromkeys(people["창구"])]
+    elif people is not None:  # 명부는 넣었는데 이 칸에 (이 기준일까지 기록이 있는) 사람이 없다 — 조용히 넘기지 않는다
+        lines.append("〈명부〉 이 칸에 드는 대상자가 명부에 없습니다(이 기준일까지의 접촉 기록 기준). 집단 신호만 냅니다.")
     if "자원" in e:
         lines += _resource_lines(st.상태, e["자원"], vol_date)
     if st.상태.startswith("끊김") and e.get("동시 끊김"):
