@@ -10,10 +10,11 @@
   shap_weekly.csv    좁아짐 분류 모델(재분석 b3, 랜덤포레스트)의 집단×주 SHAP 값과 예측 확률
   agent_summary.csv  D1 agent.py briefing_tables()를 매주 일요일 기준으로 돌린 요약 (화면 ①)
   agent_groups.csv   같은 표의 12집단 × 주 신호·끊김 종류·상대방 업종 (화면 ①)
+  agent_people.csv   같은 표의 확인 권고 대상자 × 주 — 가상 명부(data/synthetic/roster_가상.csv, D4)를 넣어 돌린 것
                      상대방 업종은 segment_industry(git 제외)가 있어야 채워진다 → 원본이 있는 PC에서 만든다
 
 선행: build_spatial.py → build_dong_panel.py → build_facility.py (터전 값은 build_ground.build()를 그대로 쓴다),
-      agent 표는 build_segment_industry.py
+      agent 표는 build_segment_industry.py, 대상자 표는 build_synthetic.py(가상 명부)
       SHAP은 reanalysis/a0_load_clean.py 산출(card*.pkl)로 b3 패널을 반올림 없이 다시 만들어 쓴다
 실행: python scripts/build_app_data.py [--only map|shap|agent]  (requirements.txt 고정 버전: scikit-learn 1.7.2, shap 0.48.0)
 주의: 같은 버전이어도 macOS arm64에서는 b3 랜덤포레스트가 reference/model_score.csv와 조금 다르게 나온다
@@ -35,6 +36,7 @@ from build_spatial import load_dong  # noqa: E402
 
 OUT = ROOT / "data" / "reference" / "app"
 REF = ROOT / "reanalysis" / "reference"
+ROSTER = ROOT / "data" / "synthetic" / "roster_가상.csv"  # D4 가상 명부 (build_synthetic.py)
 SIMPLIFY_M = 30  # 경계 단순화 허용 오차(m). 화면 축척에서 티가 나지 않고 파일이 작아진다
 
 # 재분석 b3_models.py 모델 ①과 같은 변수·설정 (90대 제외 32칸, y가 있는 주만)
@@ -117,18 +119,21 @@ def shap_weekly() -> None:
 
 def agent_weekly() -> None:
     """화면 ①의 주(월~일)와 agent.py의 7일 창이 같아지도록 일요일을 기준일로 잡는다.
-    명부(D4)는 아직 없어 대상자 표(agent_people)는 만들지 않는다."""
-    from balgil.agent import WINDOW_DAYS, briefing_tables, load_inputs
+    대상자 표(agent_people)는 가상 명부(D4)로 만든다. 명부가 없으면 집단 표만 만든다."""
+    from balgil.agent import WINDOW_DAYS, briefing_tables, load_inputs, read_roster
 
     inp = load_inputs()
     first, last = pd.Timestamp(inp.breaks["date"].min()), pd.Timestamp(inp.breaks["date"].max())
     # 지난주 비교가 되도록 첫 창 앞에 7일이 더 있어야 한다
     days = pd.date_range(first + pd.Timedelta(days=2 * WINDOW_DAYS - 1), last, freq="W-SUN")
-    summary, groups = [], []
+    # 접촉일이 모든 기준일보다 앞서야 하므로 첫 기준일로 검사한다(build_synthetic.py가 그렇게 만든다)
+    roster = read_roster(ROSTER, inp, days[0]) if ROSTER.exists() else None
+    summary, groups, people = [], [], []
     for as_of in days:
-        t = briefing_tables(inp, as_of)
+        t = briefing_tables(inp, as_of, roster)
         summary.append(t["agent_summary"])
         groups.append(t["agent_groups"])
+        people.append(t["agent_people"].assign(기준일=as_of.date()))
     pd.concat(summary).to_csv(OUT / "agent_summary.csv", index=False, encoding="utf-8-sig", lineterminator="\n")
     g = pd.concat(groups)
     g.to_csv(OUT / "agent_groups.csv", index=False, encoding="utf-8-sig", lineterminator="\n")
@@ -136,6 +141,13 @@ def agent_weekly() -> None:
     filled = int((broken & ~g["상대방업종"].str.contains("표 없음")).sum())
     print(f"agent 표: 기준일 {len(days)}개 ({days[0]:%m/%d}~{days[-1]:%m/%d}), 집단×주 {len(g)}행, "
           f"상대방 업종 채운 끊김 {filled}/{int(broken.sum())}")
+    if roster is not None:
+        pp = pd.concat(people, ignore_index=True)
+        pp = pp[["기준일"] + [c for c in pp.columns if c != "기준일"]]
+        pp.to_csv(OUT / "agent_people.csv", index=False, encoding="utf-8-sig", lineterminator="\n")
+        print(f"agent_people.csv: 확인 권고 {len(pp)}행 (가상 명부 {len(roster)}명, 대상자 {pp['대상자ID'].nunique()}명이 한 번 이상)")
+    else:
+        print(f"  [주의] {ROSTER.relative_to(ROOT)} 없음 — 대상자 표를 만들지 않았습니다 (build_synthetic.py)")
     if inp.industry is None:
         print("  [주의] segment_industry.parquet 없음 — 상대방 업종이 비었습니다. 원본이 있는 PC에서 다시 만드세요")
 
