@@ -163,6 +163,7 @@ SIGNAL = {
 }
 SIGNAL_ORDER = {"빨강": 0, "주황": 1, "노랑": 2, "초록": 3}
 DEMO_AS_OF = "2025-10-12"  # 시연 주 10/06~10/12 (#49 2번). 보조 장면 10/01 주황은 10/05 주
+DEMO_SEG = "춘천 여성 70대"  # 화면 ② 기본 집단 — 시연 칸(08절 8.1)
 
 
 def next_action(r: pd.Series, n_same: int) -> str:
@@ -322,9 +323,11 @@ def screen_detail():
     p, s, m = load_weekly(), load_shap(), load_map()
     segs = sorted(s["seg"].unique())
     c1, c2 = st.columns([1, 2])
-    seg = c1.selectbox("집단 (시군구 × 성 × 연령)", segs, index=segs.index("춘천 여성 80대"))
+    # 기본값은 시연 장면(08절 8.1): 춘천 여성 70대, DEMO_AS_OF가 끝나는 주
+    seg = c1.selectbox("집단 (시군구 × 성 × 연령)", segs, index=segs.index(DEMO_SEG) if DEMO_SEG in segs else 0)
     weeks = sorted(s["w"].unique())
-    w = c2.select_slider("주", options=weeks, value=weeks[-1],
+    demo_w = (pd.Timestamp(DEMO_AS_OF) - pd.Timedelta(days=6) - WEEK0).days // 7
+    w = c2.select_slider("주", options=weeks, value=demo_w if demo_w in weeks else weeks[-1],
                          format_func=lambda i: f"{(WEEK0 + pd.Timedelta(days=7 * int(i))):%m/%d}")
     wk = WEEK0 + pd.Timedelta(days=7 * int(w))
     g = p[p["seg"] == seg].sort_values("w")
