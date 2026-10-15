@@ -463,7 +463,7 @@ def find_counterpart(inp: Inputs, city: str, sex: str, age: str, adm_cd: str | N
 SHOP_PER_CENTER = 3  # 상대방 업종 가게가 경로당의 3배가 안 되는 동은 경로당을 먼저. #49에서 3배로 정함(판단값, 민감도는 06절 6.4)
 
 
-def counterpart_kind(inp: Inputs, city: str, sex: str, age: str, adm_cd: str) -> dict:
+def counterpart_kind(inp: Inputs, city: str, sex: str, age: str, adm_cd: str, mult: int | None = None) -> dict:
     """그 대상자에게 먼저 물을 창구: 가게인가 경로당·마을회관인가 (#6, #26).
     춘천 면 지역은 가게가 적고 60세+ 천 명당 경로당이 많다(60세+ 천 명당 체류형 점포 × 경로당·마을회관, 춘천 −0.79, n=25;
     강남 0.03. 분석결과 4.7, C3 #30. 수치는 10/17 수치표). 단골 가게를 전제하면 터전점수가 낮아
@@ -478,7 +478,8 @@ def counterpart_kind(inp: Inputs, city: str, sex: str, age: str, adm_cd: str) ->
     if inp.facilities is not None:
         f = inp.facilities[inp.facilities["ADM_CD"].astype(str) == str(adm_cd)]
         centers = int(f["경로당수"].iloc[0]) if len(f) else None
-    first = "경로당·마을회관" if shops is not None and centers and shops < SHOP_PER_CENTER * centers else "가게"
+    m = SHOP_PER_CENTER if mult is None else mult  # mult는 배수 민감도용(build_priority.py). 평소에는 비워 둔다
+    first = "경로당·마을회관" if shops is not None and centers and shops < m * centers else "가게"
     return {"창구": first, "가게후보": shops, "경로당": centers, "업종": ind}
 
 
