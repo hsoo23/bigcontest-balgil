@@ -188,8 +188,11 @@ def screen_briefing():
     c[1].markdown(ui.stat("빨강 · 필수형 끊김", f"{int(sm['빨강'])}", "필수 발길(장보기·병원·약국)까지", dot=CRITICAL),
                   unsafe_allow_html=True)
     c[2].markdown(ui.stat("주황 · 대면형 끊김", f"{int(sm['주황'])}", "대면 발길만", dot=SERIOUS), unsafe_allow_html=True)
-    c[3].markdown(ui.stat("보정 뒤 남은 경보일", f"{int(sm['경보일_공통충격보정'])}",
-                          f"집단 × 일 · 보정 없이 {int(sm['경보일_보정없음'])} → 계절 {int(sm['경보일_계절보정'])}"),
+    # 공통 충격 보정은 경보를 지우기도(명절) 드러내기도(30·40대는 그대로인데 고령만 준 주) 한다.
+    # 그래서 "남은"이 아니라 "보정 뒤"로 부르고, 늘어난 주는 늘어났다고 적는다 (10/01 강남 남 60대 주황이 그 예)
+    a0, a1, a2 = (int(sm[k]) for k in ("경보일_보정없음", "경보일_계절보정", "경보일_공통충격보정"))
+    note = " · 보정으로 드러난 끊김" if a2 > a0 else ""
+    c[3].markdown(ui.stat("보정 뒤 경보일", f"{a2}", f"집단 × 일 · 보정 없이 {a0} → 계절 {a1}{note}"),
                   unsafe_allow_html=True)
 
     st.write("")
