@@ -104,6 +104,9 @@ def load_agent() -> tuple[pd.DataFrame, pd.DataFrame]:
     groups["상대방업종"] = groups["상대방업종"].fillna("")
     if "궂은날" in groups:  # agent.py 날씨 꼬리표(#31 수경). 표를 그 뒤에 다시 만들어야 열이 생긴다
         groups["궂은날"] = groups["궂은날"].fillna("")
+    for c in ("다음행동", "자원후보"):  # agent.py next_step·match_resource(#44 수경). 표를 그 뒤에 다시 만들어야 열이 생긴다
+        if c in groups:
+            groups[c] = groups[c].fillna("")
     return summ, groups
 
 
@@ -212,7 +215,8 @@ def screen_briefing():
             "대면 발길 최저": signed(r["대면_7일최저_pct"]) if broken else "—",
             "필수 발길 최저": signed(r["필수_7일최저_pct"]) if broken else "—",
             "평소 닿던 업종": ui.esc(r["상대방업종"]) if broken else "—",
-            "다음 행동": ui.esc(next_action(r, int(same.get(r["도시"], 0)))),
+            # agent.py가 낸 문구를 그대로 쓴다(브리핑과 갈리지 않게). 열이 없는 옛 표에서만 화면 규칙으로
+            "다음 행동": ui.esc(r["다음행동"] if r.get("다음행동") else next_action(r, int(same.get(r["도시"], 0)))),
             "_calm": r["신호"] == "초록",
         })
     cols = [("신호", ""), ("집단", ""), ("끊긴 날", "n"), ("대면 발길 최저", "n"), ("필수 발길 최저", "n")]
@@ -224,6 +228,7 @@ def screen_briefing():
                "「평소 닿던 업종」은 6개월 평소 결제가 몰린 업종이고, 실제 가게·경로당은 본인 등록으로만 정합니다.")
     st.write("")
     people_table(as_of, g)
+    resource_lines(g)
 
 
 # ── ② 발길 상세 ────────────────────────────────────────────────────────
@@ -266,6 +271,28 @@ def people_table(as_of: pd.Timestamp, g: pd.DataFrame):
                "발길 신호는 집단 단위이고, 동은 대상자 주소에서만 붙여 터전과 창구를 고릅니다 — 카드 지표를 동에 붙이지 않습니다. "
                "창구는 그 동의 상대방 업종 가게가 경로당·마을회관의 3배가 안 되면 경로당·마을회관을 먼저 묻습니다(10/17 확정 전 기준). "
                "후보 수는 상가·시설 공개 자료의 개수이고, 실제로 다니던 곳은 본인 등록으로만 받습니다.")
+
+
+def resource_lines(g: pd.DataFrame):
+    """이 주에 가져갈 것 — agent.py match_resource(#44)가 상태별로 고른 자원 후보 3개. 집단 단위라 같은 도시·같은
+    신호면 같은 후보가 나오므로 묶어 한 줄씩 보인다. 사람에게 맞춘 추천이 아니다."""
+    if "자원후보" not in g or not (g["자원후보"] != "").any():
+        return
+    kind = {"빨강": "방문 때 가져갈 복지서비스", "주황": "만남이 생기는 봉사·프로그램", "노랑": "동 단위로 나갈 봉사 일감"}
+    shorten = lambda s: s if len(s) <= 34 else s[:33] + "…"  # noqa: E731  1365 제목이 길다
+    lines, vol = [], False
+    x = g[g["자원후보"] != ""].assign(_o=lambda d: d["신호"].map(SIGNAL_ORDER)).sort_values(["_o", "도시"])
+    for (sig, city, res), d in x.groupby(["신호", "도시", "자원후보"], sort=False):
+        label, color = SIGNAL[sig]
+        items = " · ".join(ui.esc(shorten(s.strip())) for s in res.split(" · "))
+        vol |= sig in ("주황", "노랑")
+        lines.append(f"<div style='margin:4px 0;font-size:14px'>{ui.badge(label.split(' · ')[0], color)} "
+                     f"<b>{ui.esc(city)}</b> {len(d)}개 집단 — {kind.get(sig, '')}: {items}</div>")
+    html("<div class='bg-sec'>이 주에 가져갈 것 <span style='color:" + ui.MUTE + ";font-weight:400'>"
+         "· 상태별 자원 후보 3개 (거리·반복성·만남 순, 규칙 정렬)</span></div>" + "".join(lines))
+    st.caption("복지로 중앙·지자체 복지서비스(고령 대상만)와 1365 봉사 일감(모집 중만)에서 agent.py가 고른 후보입니다. "
+               "집단 단위라 개인에게 맞춘 추천이 아니고, 실제 연결은 방문한 담당자가 판단합니다."
+               + (" 1365 일감은 2026-10-14 수집 시점에 모집 중인 것이라 시연 기준일(2025년)의 일감이 아닙니다." if vol else ""))
 
 
 def trend(df: pd.DataFrame, fields: dict[str, str], title: str, sub: str, wk: pd.Timestamp) -> alt.Chart:
