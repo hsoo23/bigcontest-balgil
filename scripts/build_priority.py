@@ -20,6 +20,10 @@
 2단계 창구: 동의 체류형 점포가 경로당(마을회관 포함 — 같은 표준데이터)의 3배가 안 되면 경로당 창구 후보로 표시한다.
   배수는 #29 agent.py counterpart_kind와 같지만, agent는 그 집단의 상대방 업종 가게 수를 센다. 이 표는 동 기본값이다.
 
+민감도(reach_sensitivity.csv): 배치할 동 수 k와 공급 부족 경계(터전 하위 1/3·절반·2/3)를 바꿔도
+  「우선순위는 공급 부족 동 안 무작위보다 많이 닿고, 터전 하위 k개(기획안 정의)는 무작위와 비슷하다」가 유지되는지 본다.
+  본 표 두 파일의 값은 바꾸지 않는다.
+
 선행: build_ground.py
 실행: python scripts/build_priority.py
 """
@@ -33,11 +37,17 @@ sys.path.insert(0, str(ROOT / "src"))
 
 import pandas as pd  # noqa: E402
 
+from balgil.agent import SHOP_PER_CENTER  # noqa: E402  창구 배수는 agent.py 한 곳에서만 바꾼다(10/17 확정)
 from balgil.data import PROCESSED_DIR  # noqa: E402
 
 REF = ROOT / "data" / "reference"
-SHOP_PER_CENTER = 3  # agent.py(#29) SHOP_PER_CENTER와 같은 초안 값. 10/17 확정 뒤 함께 바꾼다
 KS = (3, 5)
+SENS_KS = (1, 2, 3, 4, 5, 6, 8)  # 민감도: 배치할 동 수
+SENS_SHORT = {  # 민감도: 공급 부족을 터전 하위 몇 %로 볼지 (본 표는 절반)
+    "하위 1/3": 1 / 3,
+    "하위 절반 (본 표)": 1 / 2,
+    "하위 2/3": 2 / 3,
+}
 
 ACTION = {  # (공급 부족, 필요 큼) → 무엇을 하는가 (기획안 6절)
     (True, True): "1순위 — 거점 배치·정기 프로그램 (통신상 머무는 고령이 적고, 닿아야 할 사람이 많다)",
@@ -47,7 +57,7 @@ ACTION = {  # (공급 부족, 필요 큼) → 무엇을 하는가 (기획안 6�
 }
 
 
-def build() -> pd.DataFrame:
+def build(short_frac: float = 1 / 2) -> pd.DataFrame:
     g = pd.read_csv(REF / "dong_ground.csv", dtype={"ADM_CD": str})
     hh = pd.read_parquet(PROCESSED_DIR / "ext_single_household.parquet")
     old = hh[hh["연령대"].isin(["60대", "70대이상"])].groupby("ADM_CD")[["일인세대수", "인구수"]].sum()
@@ -56,7 +66,7 @@ def build() -> pd.DataFrame:
     g["고령1인세대율"] = (g["고령1인세대수"] / g["인구_60세이상"]).round(3)
 
     n = g.groupby("도시")["ADM_CD"].transform("size")
-    g["공급부족"] = g["터전순위_통신"] <= n // 2
+    g["공급부족"] = g["터전순위_통신"] <= (n * short_frac).astype(int)  # 절반이면 n // 2와 같다
     med = g.groupby("도시")["고령1인세대수"].transform("median")
     g["필요큼"] = g["고령1인세대수"] >= med
     g["대응"] = [ACTION[(a, b)] for a, b in zip(g["공급부족"], g["필요큼"])]
@@ -69,7 +79,7 @@ def build() -> pd.DataFrame:
     return g[cols].reset_index(drop=True)
 
 
-def reach(g: pd.DataFrame) -> pd.DataFrame:
+def reach(g: pd.DataFrame, ks=KS) -> pd.DataFrame:
     rules = {
         "터전 하위 (기획안 정의)": lambda x, k: x.nsmallest(k, "터전순위_통신"),
         "우선순위 (터전 하위 절반 ∩ 1인세대 많은 순)": lambda x, k: x.nsmallest(k, "우선순위"),
@@ -78,7 +88,7 @@ def reach(g: pd.DataFrame) -> pd.DataFrame:
     rows = []
     for city, x in g.groupby("도시", sort=False):
         short = x[x["공급부족"]]
-        for k in KS:
+        for k in ks:
             in_short = k * short["고령1인세대수"].mean()  # 기준: 공급 부족 동 안에서 무작위 k개
             in_city = k * x["고령1인세대수"].mean()  # 참고: 도시 전체에서 무작위 k개
             for name, pick in rules.items():
@@ -88,6 +98,21 @@ def reach(g: pd.DataFrame) -> pd.DataFrame:
                              ", ".join(sel["ADM_NM"])))
     return pd.DataFrame(rows, columns=["도시", "k", "규칙", "도달(고령 1인세대)", "무작위 기댓값(공급 부족 안)",
                                        "도달 효율", "도달 효율(도시 전체 대비, 참고)", "동"])
+
+
+def sensitivity() -> pd.DataFrame:
+    """k와 공급 부족 경계를 바꿔 가며 도달 효율을 다시 잰다. 공급 부족 동 수보다 큰 k는 뺀다(전부 고르면 1이 된다)."""
+    out = []
+    for label, frac in SENS_SHORT.items():
+        g = build(frac)
+        n_short = g.groupby("도시")["공급부족"].sum()
+        r = reach(g, SENS_KS)
+        r = r[r["k"] < r["도시"].map(n_short)]
+        r["규칙"] = r["규칙"].str.replace("터전 하위 절반 ∩", "공급 부족 ∩", regex=False)  # 경계가 바뀌므로
+        r.insert(1, "공급부족_경계", label)
+        r.insert(2, "공급부족_동", r["도시"].map(n_short).astype(int))
+        out.append(r.drop(columns="동"))
+    return pd.concat(out, ignore_index=True)
 
 
 def short_share(g: pd.DataFrame) -> pd.DataFrame:
@@ -110,9 +135,13 @@ def main() -> None:
         print(x.head(5)[["ADM_NM", "터전순위_통신", "고령1인세대수", "고령1인세대율", "경로당창구후보"]].to_string(index=False))
     print("\n■ 사분면 동 수")
     print(g.groupby(["도시", "대응"]).size().to_string())
+    s = sensitivity()
+    print("\n■ 민감도 — 도달 효율(공급 부족 동 안 무작위 = 1), 규칙별 범위")
+    print(s.groupby(["도시", "공급부족_경계", "규칙"])["도달 효율"].agg(["min", "max"]).to_string())
+    s.to_csv(REF / "reach_sensitivity.csv", index=False, encoding="utf-8-sig", lineterminator="\n")
     g.to_csv(REF / "dong_priority.csv", index=False, encoding="utf-8-sig", lineterminator="\n")
     r.to_csv(REF / "reach_efficiency.csv", index=False, encoding="utf-8-sig", lineterminator="\n")
-    print("\n저장: data/reference/dong_priority.csv, reach_efficiency.csv")
+    print("\n저장: data/reference/dong_priority.csv, reach_efficiency.csv, reach_sensitivity.csv")
 
 
 if __name__ == "__main__":
