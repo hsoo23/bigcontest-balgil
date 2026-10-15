@@ -10,3 +10,12 @@ data/external/** -text
 # 윈도우에서 만든 CRLF가 그대로 저장소에 들어와, OS가 다른 사람이 다시
 # 만들 때마다 파일 전체가 뒤집힌다.
 docs/notion/** text eol=lf
+
+# 가상 데이터(D4)도 같은 이유로 변환을 끈다.
+#
+# E5 가상데이터설계자료 9절이 roster_가상.csv·places_가상.csv의 SHA-256을 적어
+# "같은 시드면 같은 파일이 나온다"를 증거로 내세운다. 그런데 core.autocrlf=true인
+# 윈도우에서 클론하면 42줄에 CR이 붙어 기록한 해시와 어긋난다(5,889 B → 5,931 B).
+# build_synthetic.py 자체는 줄끝을 LF로 고정해 쓰므로 OS와 무관하다 —
+# 깨지는 것은 제3자가 받은 파일의 해시를 대조할 때뿐이고, 그게 바로 증거로 쓰는 자리다.
+data/synthetic/** -text
