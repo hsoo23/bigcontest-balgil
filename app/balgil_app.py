@@ -6,6 +6,8 @@
 읽는 파일은 모두 git에 있다 — 원본 데이터가 없어도 뜬다.
   reanalysis/reference/   재분석 결과 (끊김·보정·주간 패널)
   data/reference/app/     scripts/build_app_data.py가 만든 지도·시설·SHAP, 화면 ①의 agent.py 표
+  data/reference/         dong_priority.csv · reach_efficiency.csv (화면 ③ 공급 × 필요, build_priority.py)
+캡처: python scripts/capture_screens.py → reports/screens/ (제출 체크리스트 9번)
 
 원칙
   * 집단 지표(양·질·연속성)는 시군구 × 성 × 연령까지만. 동 단위로 보여 주는 것은 터전뿐이다.
@@ -17,6 +19,8 @@
   신호(빨강·주황·노랑)  status critical/serious/warning — 색만으로 말하지 않고 항상 점·글자를 같이 단다
   터전 지도         순차 파랑 한 가지 (진할수록 값이 큼)
   지도 위 시설 점   주황(경로당)·청록(도서관) — 범주 2·3번, 전 쌍 CVD ΔE 9.2 통과
+  대응(공급 × 필요) 1순위 파랑·형평 주황·연결 청록 = 범주 1~3번(--pairs all 통과, 청록 대비 2.8:1이라 표·툴팁·
+                    모서리 글자를 함께 둔다), 유지는 회색. 이때 시설 점은 색을 빼고 먹색(속 빈 점·채운 점)으로 바꾼다
   SHAP 막대         발산 파랑(확률을 낮춤)·빨강(높임)
 """
 from __future__ import annotations
@@ -272,9 +276,9 @@ def screen_detail():
     with b, card("ground"):
         html(f"<div class='bg-sec'>터전 — 닿을 곳이 있는가 <span style='color:{ui.MUTE};font-weight:400'>"
              f"· {city}, 동 단위</span></div>")
-        html(ui.table([("동", ""), ("터전 순위", "n"), ("체류형 점포 /천명", "n"), ("경로당", "n")],
+        html(ui.table([("동", ""), ("터전 순위", "n"), ("체류형 점포 /천명", "n"), ("경로당·마을회관", "n")],
                       [{"동": ui.esc(r.ADM_NM), "터전 순위": f"{r.터전순위_통신}",
-                        "체류형 점포 /천명": f"{r.체류형점포_천명당:.1f}", "경로당": f"{int(r.경로당수)}"}
+                        "체류형 점포 /천명": f"{r.체류형점포_천명당:.1f}", "경로당·마을회관": f"{int(r.경로당수)}"}
                        for r in weak.itertuples()]))
         st.caption("단위가 다릅니다 — 양·질·연속성은 집단(시군구), 터전은 동. 카드 지표는 동에 붙이지 않습니다.")
 
@@ -295,6 +299,9 @@ def screen_detail():
     labels = lab(sv[sv["기여"] >= 0], "left", 6) + lab(sv[sv["기여"] < 0], "right", -6)
     zero = alt.Chart(pd.DataFrame({"x": [0]})).mark_rule(color="#c9d3df").encode(x="x:Q")
     st.write("")
+    # 터전 카드와 SHAP을 한 덩어리로 읽지 않게 단을 나눈다(#14 윤지 — 모델 입력에 터전이 없다)
+    html(f"<div class='bg-sec' style='margin-top:8px'>모델 근거 <span style='color:{ui.MUTE};font-weight:400'>"
+         f"· 집단(시군구 × 성 × 연령) 단위 — 위 터전 표와 따로 읽습니다</span></div>")
     left, right = st.columns([3, 2])
     with left, card("shap"):
         st.altair_chart((zero + bars + labels).properties(
@@ -313,34 +320,99 @@ def screen_detail():
 
 
 # ── ③ 지도 ─────────────────────────────────────────────────────────────
+QUAD_MODE = "대응 (공급 × 필요)"
 METRICS = {
+    QUAD_MODE: (None, "공급(통신 터전) 부족 × 필요(고령 1인세대) 큼 — C5 동 우선순위"),
     "터전 점수 (통신)": ("터전점수_통신", "높을수록 터전이 강함"),
     "체류형 점포 (60세+ 천 명당)": ("체류형점포_천명당", "상가정보 · 커피·미용·목욕·운동·노래방·주점"),
     "경로당·마을회관 (60세+ 천 명당)": ("경로당_천명당", "표준데이터 · 공공이 노인 거주지에 배치"),
 }
+METRIC_FMT = {"터전점수_통신": "{:.2f}", "체류형점포_천명당": "{:.1f}", "경로당_천명당": "{:.1f}"}
+# 대응 넷 (build_priority.py ACTION). 지도는 모든 쌍이 맞닿으므로 범주 1~3번만 쓴다(--pairs all 통과, 3번 청록은
+# 대비 2.8:1이라 표·툴팁·글자 라벨로 함께 말한다). 「유지」는 할 일이 없는 칸이라 색 대신 회색으로 물린다
+QUAD = {
+    "1순위": ("#2a78d6", "1순위 · 거점 배치", "공급 부족 · 필요 큼"),
+    "형평": ("#eb6834", "형평 · 찾아가기", "공급 부족 · 사람 적음"),
+    "연결": ("#1baf7a", "연결 · 있는 곳에 붙이기", "공급 있음 · 필요 큼"),
+    "유지": ("#cfd6df", "유지", "공급 있음 · 사람 적음"),
+}
+# 대응 색과 겹치지 않게 시설은 색 없이 먹색으로: 많은 경로당은 속 빈 점(지도를 덮지 않게), 적은 도서관은 채운 점
+FAC_INK = {"경로당": ("#ffffff", ui.INK), "도서관": (ui.INK, "#ffffff")}
+
+
+@st.cache_data
+def load_priority() -> pd.DataFrame:
+    p = pd.read_csv(ROOT / "data" / "reference" / "dong_priority.csv", dtype={"ADM_CD": str})
+    p["사분면"] = p["대응"].str.split(" — ").str[0]
+    return p
+
+
+@st.cache_data
+def load_reach() -> pd.DataFrame:
+    return pd.read_csv(ROOT / "data" / "reference" / "reach_efficiency.csv")
+
+
+def quadrant_chart(p: pd.DataFrame) -> alt.Chart:
+    """공급(터전 순위, 왼쪽이 약함) × 필요(고령 1인세대). 칸 이름을 모서리에 글자로 적어 색만으로 말하지 않는다."""
+    n, med = len(p), float(p["고령1인세대수"].median())
+    cut = n // 2 + 0.5  # build_priority.py: 공급부족 = 터전순위 <= n // 2
+    ymax = float(p["고령1인세대수"].max()) * 1.12
+    d = p.assign(이름=p["사분면"].map(lambda k: QUAD[k][1]))
+    x = alt.X("터전순위_통신:Q", title="터전 순위 (왼쪽일수록 공급 부족)", scale=alt.Scale(domain=[0, n + 1], nice=False),
+              axis=alt.Axis(tickCount=5, grid=False))
+    y = alt.Y("고령1인세대수:Q", title="고령 1인세대 (명)", scale=alt.Scale(domain=[0, ymax], nice=False),
+              axis=alt.Axis(tickCount=4, format=",.0f"))
+    dots = alt.Chart(d).mark_circle(size=90, opacity=1, stroke=ui.CANVAS, strokeWidth=1.5).encode(
+        x=x, y=y,
+        color=alt.Color("사분면:N", scale=alt.Scale(domain=list(QUAD), range=[v[0] for v in QUAD.values()]), legend=None),
+        tooltip=[alt.Tooltip("ADM_NM:N", title="동"), alt.Tooltip("이름:N", title="대응"),
+                 alt.Tooltip("우선순위:Q", title="우선순위"), alt.Tooltip("터전순위_통신:Q", title="터전 순위"),
+                 alt.Tooltip("고령1인세대수:Q", title="고령 1인세대", format=",")])
+    top = d[d["사분면"] == "1순위"].nsmallest(3, "우선순위")
+    names = alt.Chart(top).mark_text(align="left", dx=7, dy=-6, fontSize=11, color=ui.INK_2).encode(
+        x="터전순위_통신:Q", y="고령1인세대수:Q", text="ADM_NM:N")
+    rules = (alt.Chart(pd.DataFrame({"x": [cut]})).mark_rule(color="#c9d3df", strokeDash=[3, 3]).encode(x="x:Q")
+             + alt.Chart(pd.DataFrame({"y": [med]})).mark_rule(color="#c9d3df", strokeDash=[3, 3]).encode(y="y:Q"))
+    corner = pd.DataFrame({"x": [0.4, n + 0.6, 0.4, n + 0.6], "y": [ymax, ymax, 0, 0],
+                           "t": ["1순위", "연결", "형평", "유지"],
+                           "a": ["left", "right", "left", "right"], "b": ["top", "top", "bottom", "bottom"]})
+    corners = alt.layer(*[
+        alt.Chart(corner[(corner["a"] == a) & (corner["b"] == b)]).mark_text(
+            align=a, baseline=b, dy=4 if b == "top" else -4, fontSize=11, fontWeight=600, color=ui.MUTE)
+        .encode(x="x:Q", y="y:Q", text="t:N")
+        for a in ("left", "right") for b in ("top", "bottom")])
+    return (rules + dots + names + corners).properties(height=260)
 
 
 def screen_map():
-    html(ui.heading("③", "터전 지도", "어느 동에 닿을 곳이 없나 — 47개 행정동 공급 지표와 시설"))
-    m, fac = load_map(), load_facilities()
+    html(ui.heading("③", "터전 지도", "어느 동에 닿을 곳이 없나 — 47개 행정동 공급 지표와 시설, 자원을 어디에 먼저 둘까"))
+    m, fac, pri = load_map(), load_facilities(), load_priority()
     c1, c2, c3 = st.columns([1, 2, 2])
     city = c1.radio("도시", ["춘천", "강남"], horizontal=True)
     label = c2.selectbox("색으로 볼 지표", list(METRICS))
     show = c3.multiselect("점으로 겹칠 시설", ["경로당", "도서관"], default=["경로당", "도서관"])
     col, hint = METRICS[label]
-    g = m[m["도시"] == city].copy()
+    quad = label == QUAD_MODE
+    g = m[m["도시"] == city].merge(pri[["ADM_CD", "우선순위", "사분면", "고령1인세대수"]], on="ADM_CD", how="left")
     sgg = "강원 춘천시" if city == "춘천" else "서울 강남구"
 
-    q = pd.qcut(g[col], 5, labels=False, duplicates="drop")
-    g["_c"] = [BLUE_RAMP[int(i)] for i in q]
+    if quad:
+        g["_c"] = g["사분면"].map(lambda k: QUAD[k][0])
+        g["_q"] = g["사분면"].map(lambda k: QUAD[k][1])
+    else:
+        q = pd.qcut(g[col], 5, labels=False, duplicates="drop")
+        g["_c"] = [BLUE_RAMP[int(i)] for i in q]
     center = g.geometry.union_all().centroid
     fmap = folium.Map(location=[center.y, center.x], zoom_start=10 if city == "춘천" else 13,
                       tiles=None, control_scale=True)
     folium.TileLayer("Esri.WorldGrayCanvas", name="배경 지도", control=False).add_to(fmap)
-    tip = folium.GeoJsonTooltip(
-        fields=["ADM_NM", "터전순위_통신", "체류형점포_천명당", "경로당수", "도서관수", "인구_60세이상"],
-        aliases=["동", "터전 순위(약한 순)", "체류형 점포 /60세+천명", "경로당·마을회관", "도서관", "60세+ 인구"],
-        style=f"font-family:{ui.FONT};font-size:12px;color:{ui.INK};")
+    fields = ["ADM_NM", "터전순위_통신", "체류형점포_천명당", "경로당수", "도서관수", "인구_60세이상"]
+    aliases = ["동", "터전 순위(약한 순)", "체류형 점포 /60세+천명", "경로당·마을회관", "도서관", "60세+ 인구"]
+    if quad:
+        fields = fields[:1] + ["_q", "우선순위", "고령1인세대수"] + fields[1:]
+        aliases = aliases[:1] + ["대응", "우선순위", "고령 1인세대"] + aliases[1:]
+    tip = folium.GeoJsonTooltip(fields=fields, aliases=aliases,
+                                style=f"font-family:{ui.FONT};font-size:12px;color:{ui.INK};")
     folium.GeoJson(
         g.__geo_interface__,
         style_function=lambda f: {"fillColor": f["properties"]["_c"], "color": "#ffffff", "weight": 1.5,
@@ -349,9 +421,11 @@ def screen_map():
         tooltip=tip, name=label).add_to(fmap)
     for kind in show:
         layer = folium.FeatureGroup(name=kind)
+        fill, line = FAC_INK[kind] if quad else (FAC_COLOR[kind], "#ffffff")
         for r in fac[(fac["SGG_NM"] == sgg) & (fac["시설종류"] == kind)].itertuples():
-            folium.CircleMarker([r.위도, r.경도], radius=4, color="#ffffff", weight=1.5, fill=True,
-                                fill_color=FAC_COLOR[kind], fill_opacity=1,
+            folium.CircleMarker([r.위도, r.경도], radius=3 if quad else 4, color=line, weight=1.2 if quad else 1.5,
+                                fill=True,
+                                fill_color=fill, fill_opacity=1,
                                 tooltip=f"{kind} · {r.시설명} ({r.ADM_NM})").add_to(layer)
         layer.add_to(fmap)
 
@@ -360,33 +434,83 @@ def screen_map():
         html(f"<div class='bg-sec'>{ui.esc(city)} · {ui.esc(label)} <span style='color:{ui.MUTE};font-weight:400'>"
              f"· {ui.esc(hint)}</span></div>")
         components.html(fmap.get_root().render(), height=500)
-        lo, hi = g[col].min(), g[col].max()
-        html(ui.legend([(f"{'낮음' if i == 0 else '높음' if i == 4 else ''}", c) for i, c in enumerate(BLUE_RAMP)]
-                       + [(k, FAC_COLOR[k]) for k in show])
-             .replace("<div class='bg-legend'>", f"<div class='bg-legend'><span>{lo:.1f}</span>", 1)
-             .replace("</div>", f"<span>{hi:.1f} (5분위)</span></div>", 1))
+        if quad:
+            fill = ui.legend([(v[1], v[0]) for v in QUAD.values()])
+        else:
+            lo, hi = g[col].min(), g[col].max()
+            fill = (f"<div class='bg-legend' style='gap:4px'><span>{METRIC_FMT[col].format(lo)}&nbsp;</span>"
+                    + "".join(f"<span><i style='background:{c};margin:0'></i></span>" for c in BLUE_RAMP)
+                    + f"<span>&nbsp;{METRIC_FMT[col].format(hi)} · 5분위, 진할수록 큼</span></div>")
+
+        def dot(k: str) -> str:
+            f, b = (FAC_INK[k][0], ui.INK) if quad else (FAC_COLOR[k], FAC_COLOR[k])
+            return f"<i style='background:{f};border:1.5px solid {b};width:9px;height:9px;border-radius:50%'></i>"
+        facs = "".join(f"<span>{dot(k)}{ui.esc(k)}</span>" for k in show)
+        html(fill + (f"<div class='bg-legend' style='margin-top:4px'>{facs}</div>" if show else ""))
     with right:
-        k = st.columns(2)
-        k[0].markdown(ui.stat("경로당·마을회관", f"{int(g['경로당수'].sum())}", f"{city} {len(g)}개 동", dot=FAC_COLOR["경로당"]),
-                      unsafe_allow_html=True)
-        k[1].markdown(ui.stat("도서관", f"{int(g['도서관수'].sum())}", "공공·작은·어린이", dot=FAC_COLOR["도서관"]),
-                      unsafe_allow_html=True)
-        st.write("")
-        html(f"<div class='bg-sec'>{ui.esc(label)} 낮은 동 5곳</div>")
-        t = g.sort_values(col).head(5)
-        html(ui.table([("동", ""), ("값", "n"), ("터전 순위", "n"), ("경로당", "n"), ("60세+ 인구", "n")],
-                      [{"동": ui.esc(r.ADM_NM), "값": f"{getattr(r, col):,.2f}".rstrip("0").rstrip("."),
-                        "터전 순위": f"{r.터전순위_통신}", "경로당": f"{int(r.경로당수)}",
-                        "60세+ 인구": f"{int(r.인구_60세이상):,}"} for r in t.itertuples()]))
-        st.write("")
-        html("<div class='bg-callout'>체류형 점포와 경로당은 <b>방향이 반대</b>입니다(춘천 스피어만 −0.79). "
-             "면 지역은 가게가 적은 대신 노인 인구 대비 경로당이 많아, 한 지수로 더하지 않고 따로 봅니다(#6).</div>")
-        st.caption("사회복지시설은 공개 데이터에 좌표가 없어 넣지 않았습니다.")
+        if quad:
+            map_quadrant_side(g, city)
+        else:
+            map_metric_side(g, city, col, label)
+
+
+def map_metric_side(g: gpd.GeoDataFrame, city: str, col: str, label: str):
+    k = st.columns(2)
+    k[0].markdown(ui.stat("경로당·마을회관", f"{int(g['경로당수'].sum())}", f"{city} {len(g)}개 동", dot=FAC_COLOR["경로당"]),
+                  unsafe_allow_html=True)
+    k[1].markdown(ui.stat("도서관", f"{int(g['도서관수'].sum())}", "공공·작은·어린이", dot=FAC_COLOR["도서관"]),
+                  unsafe_allow_html=True)
+    st.write("")
+    html(f"<div class='bg-sec'>{ui.esc(label)} 낮은 동 5곳</div>")
+    t = g.sort_values(col).head(5)
+    html(ui.table([("동", ""), ("값", "n"), ("터전 순위", "n"), ("경로당·마을회관", "n"), ("60세+ 인구", "n")],
+                  [{"동": ui.esc(r.ADM_NM), "값": METRIC_FMT[col].format(getattr(r, col)),
+                    "터전 순위": f"{r.터전순위_통신}", "경로당·마을회관": f"{int(r.경로당수)}",
+                    "60세+ 인구": f"{int(r.인구_60세이상):,}"} for r in t.itertuples()]))
+    st.write("")
+    html("<div class='bg-callout'>체류형 점포와 경로당·마을회관은 <b>방향이 반대</b>입니다(춘천 스피어만 −0.79, 상가 × 시설). "
+         "면 지역은 가게가 적은 대신 60세 이상 천 명당 경로당이 많아, 한 지수로 더하지 않고 따로 봅니다.</div>")
+    st.caption("사회복지시설은 공개 데이터에 좌표가 없어 넣지 않았습니다. 경로당 목록 기준일이 강남 2024-07, 춘천 2025-07로 다릅니다.")
+
+
+def map_quadrant_side(g: gpd.GeoDataFrame, city: str):
+    p = g.sort_values("우선순위")
+    r = load_reach()
+    r = r[(r["도시"] == city) & r["규칙"].str.startswith("우선순위")].set_index("k")["도달 효율"]
+    short = p["사분면"].isin(["1순위", "형평"])
+    share = p.loc[short, "고령1인세대수"].sum() / p["고령1인세대수"].sum() * 100
+    k = st.columns(2)
+    k[0].markdown(ui.stat("도달 효율 · 우선순위 3곳", f"{r[3]:.2f}", f"5곳 {r[5]:.2f}배 · 부족 동 무작위 대비",
+                          unit="배"), unsafe_allow_html=True)
+    k[1].markdown(ui.stat("공급 부족 동의 고령 1인세대", f"{share:.1f}", f"{city} {int(short.sum())}개 동에 사는 비중",
+                          unit="%"), unsafe_allow_html=True)
+    st.write("")
+    with card("quad"):
+        html(f"<div class='bg-sec'>공급 × 필요 <span style='color:{ui.MUTE};font-weight:400'>· {city} {len(p)}개 동, "
+             f"점선은 터전 하위 절반 · 1인세대 중앙값</span></div>")
+        st.altair_chart(quadrant_chart(p), width="stretch")  # 범례는 지도 아래와 같다 — 칸 이름은 모서리 글자로
+    st.write("")
+    html("<div class='bg-sec'>먼저 둘 동 — 공급 부족 동</div>")
+    html(ui.table([("순위", "n"), ("동", ""), ("대응", ""), ("터전 순위", "n"), ("고령 1인세대", "n")],
+                  [{"순위": f"{int(x.우선순위)}", "동": ui.esc(x.ADM_NM),
+                    "대응": ui.badge(QUAD[x.사분면][1], QUAD[x.사분면][0]),
+                    "터전 순위": f"{x.터전순위_통신}", "고령 1인세대": f"{int(x.고령1인세대수):,}"}
+                   for x in p[short].head(6).itertuples()]))
+    st.caption("공급 부족 = 통신 터전 순위 하위 절반, 필요 큼 = 고령 1인세대 수가 도시 중앙값 이상(build_priority.py). "
+               "1순위는 거점·정기 프로그램, 형평은 사람은 적어도 다른 길이 없는 곳이라 찾아가는 형태로 둡니다. "
+               "터전 하위 동만 고르면 무작위와 다르지 않아, 터전은 효율이 아니라 형평의 근거로 씁니다. "
+               "출처 data/reference/dong_priority.csv · reach_efficiency.csv")
 
 
 # ── ④ 보정 전·후 ───────────────────────────────────────────────────────
-STEPS = {"보정 없음": "(0) 보정 없음", "계절형 보정": "(1) 계절형 보정", "+ 공통 충격 보정": "(2) + 공통 충격 보정"}
-STEP_COL = {"보정 없음": "al0", "계절형 보정": "al1", "+ 공통 충격 보정": "al2"}
+# 라디오 글자 맨 앞의 "+"는 마크다운 목록으로 읽혀 사라진다 → "계절 + 공통 충격"으로 단계가 누적임을 적는다
+STEPS = {"보정 없음": "(0) 보정 없음", "계절형 보정": "(1) 계절형 보정", "계절 + 공통 충격 보정": "(2) + 공통 충격 보정"}
+STEP_COL = {"보정 없음": "al0", "계절형 보정": "al1", "계절 + 공통 충격 보정": "al2"}
+
+
+def cut_rate(v: float) -> str:
+    """공통 사건 주간 감소율. 기준(보정 없음)은 비교 대상이 없어 —, 음수는 오히려 늘어난 것이다(수치표 3절)."""
+    return f"{v:.0f}%" if v >= 0 else f"−{-v:.0f}% (늘어남)"
 
 
 def screen_correction():
@@ -405,8 +529,10 @@ def screen_correction():
     k[1].markdown(ui.stat("공통 사건 주간 알림", f"{int(cur.iloc[1])}", "추석·광복절·성탄 뒤 7일" if is_base else
                           f"보정 없음 {int(base.iloc[1])}에서 {int(cur.iloc[1] - base.iloc[1]):+d}", dot=CRITICAL),
                   unsafe_allow_html=True)
-    k[2].markdown(ui.stat("공통 사건 주간 감소율", f"{(1 - cur.iloc[1] / base.iloc[1]) * 100:.0f}", "보정 없음 대비",
-                          unit="%"), unsafe_allow_html=True)
+    rate = (1 - cur.iloc[1] / base.iloc[1]) * 100
+    k[2].markdown(ui.stat("공통 사건 주간 감소율", "—" if is_base else f"{rate:.0f}".replace("-", "−"),
+                          "기준 단계" if is_base else "보정 없음 대비" + (" · 오히려 늘어남" if rate < 0 else ""),
+                          unit="" if is_base else "%"), unsafe_allow_html=True)
     st.write("")
 
     d = b[["date", "seg", "holwk", STEP_COL[step]]].rename(columns={STEP_COL[step]: "alert"})
@@ -430,13 +556,17 @@ def screen_correction():
             title=alt.Title("집단 × 날짜 알림", subtitle=f"{step}{' · 병원·약국 분리' if nomed else ''} — 빨간 칸이 끊김 판정"),
             height=330), width="stretch")
         html(ui.legend([("알림 (끊김 판정)", CRITICAL), ("공통 사건 주간 (추석·광복절·성탄 뒤 7일)", SHADE)]))
-    st.caption("보정을 끄면 추석 주간이 알림으로 뒤덮입니다. 계절형 보정만으로는 줄지 않고, 같은 도시 30·40대가 함께 "
-               "줄어든 만큼을 빼는 공통 충격 보정에서 크게 줄어듭니다. 출처: 재분석 b2 (reanalysis/reference/false_alarm.csv).")
+    n0, n1, n2 = (int(fa.iloc[i, 0]) for i in range(3))
+    st.caption(f"보정을 끄면 추석 주간이 알림으로 뒤덮입니다. 계절형 보정만으로는 줄지 않고({n0} → {n1}), 같은 도시 "
+               f"30·40대가 함께 줄어든 만큼을 빼는 공통 충격 보정에서 {n2}로 줄어듭니다. 병원·약국 분리는 네 번째 단계가 아니라 "
+               "같은 세 단계를 다시 잰 다른 축입니다(오른쪽 위 스위치). "
+               f"출처: 재분석 b2 (reanalysis/reference/{'nomed_' if nomed else ''}false_alarm.csv).")
     st.write("")
     html("<div class='bg-sec'>보정 단계별 알림 수</div>")
     html(ui.table([("보정 단계", ""), ("전체 알림", "n"), ("공통 사건 주간", "n"), ("그 밖의 날", "n"), ("공통 사건 주간 감소율", "n")],
                   [{"보정 단계": ui.esc(i), "전체 알림": f"{int(r.iloc[0])}", "공통 사건 주간": f"{int(r.iloc[1])}",
-                    "그 밖의 날": f"{int(r.iloc[2])}", "공통 사건 주간 감소율": f"{r.iloc[3]:.0f}%"} for i, r in fa.iterrows()]))
+                    "그 밖의 날": f"{int(r.iloc[2])}", "공통 사건 주간 감소율": "—" if n == 0 else cut_rate(r.iloc[3])}
+                   for n, (i, r) in enumerate(fa.iterrows())]))
 
 
 # ── 화면 ───────────────────────────────────────────────────────────────
