@@ -126,7 +126,7 @@ def agent_weekly() -> None:
     first, last = pd.Timestamp(inp.breaks["date"].min()), pd.Timestamp(inp.breaks["date"].max())
     # 지난주 비교가 되도록 첫 창 앞에 7일이 더 있어야 한다
     days = pd.date_range(first + pd.Timedelta(days=2 * WINDOW_DAYS - 1), last, freq="W-SUN")
-    # 접촉일이 모든 기준일보다 앞서야 하므로 첫 기준일로 검사한다(build_synthetic.py가 그렇게 만든다)
+    # 명부를 첫 기준일로 한 번 읽는다. 그보다 늦은 접촉일은 경고만 나고, 기준일마다 그날까지의 접촉만 교차에 든다(#48)
     roster = read_roster(ROSTER, inp, days[0]) if ROSTER.exists() else None
     summary, groups, people = [], [], []
     for as_of in days:
