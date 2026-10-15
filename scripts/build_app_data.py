@@ -144,6 +144,10 @@ def agent_weekly() -> None:
     if roster is not None:
         pp = pd.concat(people, ignore_index=True)
         pp = pp[["기준일"] + [c for c in pp.columns if c != "기준일"]]
+        # 이 파일만 떼어 봐도 가상인 줄 알도록 명부의 비고(「가상 데이터 — 실제 인물이 아닙니다」)를 그대로 붙인다(E5 7절, #46 윤지 리뷰)
+        note = pd.read_csv(ROSTER, dtype=str, encoding="utf-8-sig")[["대상자ID", "비고"]]
+        pp = pp.merge(note, on="대상자ID", how="left", validate="many_to_one")
+        assert pp["비고"].str.startswith("가상").all(), "가상 표기가 빠진 대상자 행이 있습니다"
         pp.to_csv(OUT / "agent_people.csv", index=False, encoding="utf-8-sig", lineterminator="\n")
         print(f"agent_people.csv: 확인 권고 {len(pp)}행 (가상 명부 {len(roster)}명, 대상자 {pp['대상자ID'].nunique()}명이 한 번 이상)")
     else:

@@ -13,10 +13,13 @@ LLM은 부르지 않는다. 문장은 고정 틀에 계산값을 슬롯으로 �
   find_counterpart                    상대방 업종·동 점포 수 ← segment_industry · dong_industry_stores
                                       (scripts/build_segment_industry.py). D4 장소 표가 오면 장소까지
   counterpart_kind                    먼저 물을 창구(가게 / 경로당·마을회관) ← 위 + fac_dong (build_facility.py)
+  match_resource                      상태별 자원 후보 ← res_welfare_central · res_welfare_local · res_volunteer_target
+                                      (scripts/fetch_welfare_api.py). 거리 → 반복성 → 대면성 순 (기획안 6절)
+  ground_alerts                       터전 없음 후보 동 + C5 대응 ← data/reference/dong_priority.csv (build_priority.py)
   draft_outreach · inquiry_script     고정 문장 틀, 창구별 문의 문구
   briefing_tables                     D3 화면용 표 넷 (--out)
-아직 안 되는 것 (자원 정제본·종결 형식 확정 뒤, 10/18–20)
-  match_resource · log_outcome
+아직 안 되는 것 (종결 형식 확정 뒤)
+  log_outcome
 
 단위 원칙 (#14, #20)
   끊김·좁아짐은 시군구 × 성 × 연령 집단이다. 카드 지표는 동에 붙이지 않는다.
@@ -28,6 +31,7 @@ LLM은 부르지 않는다. 문장은 고정 틀에 계산값을 슬롯으로 �
 from __future__ import annotations
 
 import argparse
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -49,6 +53,8 @@ GROUND_BOTTOM = 0.2                    # 도시 안 터전점수 하위 20%를 �
 SEVERITY = {"빨강(필수까지 끊김)": 2, "주황(대면만 끊김)": 1, "-": 0}
 WEATHER_PATH = ROOT / "data" / "reference" / "weather_daily.csv"
 BAD_WEATHER = ["큰비", "폭염", "한파", "대설"]  # 특보 기준을 일자료로 옮긴 근사값 (scripts/explore_weather.py)
+PRIORITY_PATH = ROOT / "data" / "reference" / "dong_priority.csv"  # C5 동 우선순위 (현수 build_priority.py, git에 올림)
+VOLUNTEER_META = ROOT / "data" / "external" / "volunteer_1365" / "meta.json"
 
 # reanalysis/reference/features_dong.csv → 동 패널 열 이름
 _REF_DONG = {"행정동코드": "ADM_CD", "이름(추정)": "ADM_NM", "60대 이상 비중": "60대이상_비중",
@@ -75,6 +81,9 @@ class Inputs:
     dong_stores: pd.DataFrame | None = None  # 동 × 업종 점포 수 (같은 스크립트, 상가 원본 필요)
     facilities: pd.DataFrame | None = None   # 동 × 경로당·도서관 수 (현수 build_facility.py, C3)
     weather: pd.DataFrame | None = None  # 일자 × 도시 기상과 궂은 날 표시 (explore_weather.py, git에 올림)
+    resources: pd.DataFrame | None = None  # 복지로 중앙·지자체 + 1365 봉사를 한 표로 (_load_resources)
+    priority: pd.DataFrame | None = None   # 47동 × C5 우선순위·대응 (dong_priority.csv)
+    volunteer_date: str | None = None      # 1365 수집일 — 시연 기준일(2025)과 달리 지금 모집 중인 일감이다
     sources: dict = field(default_factory=dict)
 
 
@@ -106,7 +115,93 @@ def load_inputs() -> Inputs:
     if WEATHER_PATH.exists():
         opt["weather"] = pd.read_csv(WEATHER_PATH, parse_dates=["date"], encoding="utf-8-sig")
         src["weather"] = WEATHER_PATH
+    if PRIORITY_PATH.exists():
+        opt["priority"] = pd.read_csv(PRIORITY_PATH, dtype={"ADM_CD": str}, encoding="utf-8-sig")
+        src["priority"] = PRIORITY_PATH
+    res_paths = {k: PROCESSED_DIR / f"{n}.parquet" for k, n in RESOURCE_FILES.items()}
+    if all(p.exists() for p in res_paths.values()):
+        opt["resources"] = _load_resources(*(pd.read_parquet(p) for p in res_paths.values()))
+        src.update({f"res_{k}": p for k, p in res_paths.items()})
+        if VOLUNTEER_META.exists():
+            opt["volunteer_date"] = json.loads(VOLUNTEER_META.read_text(encoding="utf-8")).get("collected_at")
     return Inputs(seg, mon, brk, dong, sources=src, **opt)
+
+
+# ------------------------------------------------------------------ 자원 (기획안 6절)
+RESOURCE_FILES = {"central": "res_welfare_central", "local": "res_welfare_local", "volunteer": "res_volunteer_target"}
+REPEAT_CYCLES = {"주", "월"}       # 얼굴을 익힐 만큼 자주 반복되는 지원 주기. 분기·년·수시·1회성은 반복이 아니다
+FACE_TO_FACE = ("프로그램/서비스", "자원봉사")  # 사람을 만나게 되는 제공 방식. 현금·바우처·감면은 혜택만 받고 끝난다
+VOL_REPEAT = r"정기(?!공연|총회)|매주|매월|격주|주\s?\d회|월\s?\d회"  # 1365 목록에는 활동 주기 칸이 없어 제목으로만 본다
+VOL_ONCE = r"행사|잔치|대회|축제|공연|캠페인|하루|당일|일일"  # 일회성은 얼굴을 아는 반복이 되지 않는다(기획안 6절)
+ELDER_WORDS = r"어르신|노인|경로|시니어|실버|노년|고령|독거|치매|장기요양|기초연금"
+# 집단 판정으로는 알 수 없는 자격(장애·보훈·노숙 등)이 따로 있는 복지사업은 후보에서 뺀다
+NEEDS_OWN_ELIGIBILITY = r"장애|보훈|유공자|참전|무공|한센|사할린|노숙|출산"
+# 학대 신고·조사 기관은 자동 제안하지 않는다. 판정은 학대 위험을 재지 않아, 집단 끊김에 붙이면 근거 없는 의심이 된다.
+# 방문 뒤 사람이 판단해 연결하는 경로다(#44 현수 리뷰)
+NOT_AUTO_SUGGESTED = r"보호전문기관"
+RED_THEMES = {"신체건강", "생활지원", "보호·돌봄", "안전·위기", "에너지", "주거", "서민금융"}  # 필수까지 끊김 = 건강·생계 쪽
+
+
+def _load_resources(central: pd.DataFrame, local: pd.DataFrame, vol: pd.DataFrame) -> pd.DataFrame:
+    """세 출처를 같은 열로 맞춘다. 복지서비스는 고령 대상만 남긴다 — 생애주기가 노년뿐이거나 이름이 고령 사업인 것.
+    노년이 여러 생애주기 중 하나로만 들어간 사업(예: 국민취업지원제도)은 고령 집단 후보로 약해서 뺀다."""
+    split = lambda s: s.fillna("").str.replace(" ", "").str.split(",")
+    c = pd.DataFrame({"출처": "중앙 복지", "지역": "전국", "이름": central["servNm"], "기관": central["jurMnofNm"],
+                      "주기": central["sprtCycNm"], "제공": central["srvPvsnNm"], "주제": split(central["intrsThemaArray"]),
+                      "생애": central["lifeArray"], "번호": central["servId"]})
+    l = pd.DataFrame({"출처": "지자체 복지", "지역": local["지역"].str.split().str[-1], "이름": local["servNm"],
+                      "기관": local["bizChrDeptNm"], "주기": local["sprtCycNm"], "제공": local["srvPvsnNm"],
+                      "주제": split(local["intrsThemaNmArray"]), "생애": local["lifeNmArray"], "번호": local["servId"]})
+    w = pd.concat([c, l], ignore_index=True)
+    life = split(w.pop("생애"))
+    w["노년"] = life.map(lambda t: t == ["노년"]) | (life.map(lambda t: "노년" in t) & w["이름"].str.contains(ELDER_WORDS))
+    w = w[w["노년"] & ~w["이름"].str.contains(f"{NEEDS_OWN_ELIGIBILITY}|{NOT_AUTO_SUGGESTED}")].copy()
+    w["가까움"] = w["출처"] == "지자체 복지"
+    w["반복"] = w["주기"].isin(REPEAT_CYCLES)
+    w["대면"] = w["제공"].fillna("").str.contains("|".join(FACE_TO_FACE), regex=True)
+    w["일회"] = w["주기"].eq("1회성")
+    title = vol["progrmSj"] + " " + vol["nanmmbyNm"].fillna("")
+    v = pd.DataFrame({"출처": "1365 봉사", "지역": vol["지역"].str.split().str[-1], "이름": vol["progrmSj"],
+                      "기관": vol["nanmmbyNm"], "주기": "", "제공": "자원봉사", "주제": [[] for _ in range(len(vol))],
+                      "노년": title.str.contains(ELDER_WORDS), "번호": vol["progrmRegistNo"],
+                      "반복": vol["progrmSj"].str.contains(VOL_REPEAT), "대면": True,
+                      "일회": vol["progrmSj"].str.contains(VOL_ONCE),
+                      "모집중": vol["progrmSttusSe"].eq("2")})  # 1365 모집상태 2 = 모집중 (3 = 모집완료)
+    # 봉사는 모두 그 시군구라, 거리는 노인복지관·경로당처럼 고령이 이미 다니는 곳의 일감인지로 본다
+    v["가까움"] = v["노년"]
+    v = v[v["모집중"]].drop(columns="모집중")
+    return pd.concat([w, v], ignore_index=True)
+
+
+def match_resource(inp: Inputs, state: str, city: str, n: int = 3) -> pd.DataFrame | None:
+    """상태별 자원 후보 n개 (기획안 6절). 조건만 맞춰 나열하지 않고 발길로 이어질 수 있는 순서로 세운다.
+    아래 세 기준을 하나씩 세어(0~3점) 많이 맞는 순, 같으면 일회성이 아래, 고령 대상이 위. 한 기관은 한 번만 올린다.
+      거리   복지는 그 시군구 사업(중앙 사업은 전국), 봉사는 고령이 이미 다니는 곳(노인복지관·경로당 등)의 일감.
+             자원 위치가 시군구까지라 동은 가리지 않는다
+      반복성 주·월 단위 (봉사는 제목의 「정기·매주」로만 안다. 행사·잔치·대회는 일회성)
+      대면성 프로그램·서비스·봉사 (현금·바우처·감면은 혜택만 받고 끝난다)
+    빨강   방문 전에 붙일 복지서비스 (건강·생계 주제)
+    주황   가벼운 연결 — 봉사와 사람을 만나는 복지 프로그램. 현금 급여는 넣지 않는다
+    좁아짐 발길을 늘리는 「할 일」 — 봉사 일감. 사람이 아니라 동 단위로 나간다"""
+    r = inp.resources
+    if r is None:
+        return None
+    r = r[r["지역"].isin(["전국", CITY_SGG[city].split()[-1]])]
+    if state == "끊김(빨강)":
+        r = r[(r["출처"] != "1365 봉사") & r["주제"].map(lambda t: not any(t) or bool(RED_THEMES & set(t)))]
+    elif state == "끊김(주황)":
+        r = r[(r["출처"] == "1365 봉사") | r["대면"]]
+    elif state == "좁아짐":
+        r = r[r["출처"] == "1365 봉사"]
+    else:
+        return r.iloc[0:0]
+    r = r.assign(점수=r[["가까움", "반복", "대면"]].sum(axis=1))
+    r = r[r["점수"] > 0]
+    # 같은 점수면 사람을 만나는 쪽이 위 — 발길을 만드는 것은 결국 대면이다(예: 기초연금보다 노인맞춤돌봄)
+    r = r.sort_values(["점수", "일회", "대면", "노년", "이름"], ascending=[False, True, False, False, True])
+    # 봉사는 같은 기관이 오전·오후·월별로 나눠 올린 일감이 많아 기관마다 하나만. 복지는 부처가 같아도 사업이 다르다
+    r = r[~r["기관"].where(r["출처"] == "1365 봉사").duplicated() | (r["출처"] != "1365 봉사")]
+    return r.head(n)[["출처", "이름", "기관", "주기", "제공", "점수", "가까움", "반복", "대면", "일회", "번호"]]
 
 
 def seg_name(city: str, sex: str, age: str) -> str:
@@ -195,12 +290,21 @@ def map_ground(inp: Inputs, adm_cd: str) -> dict:
 
 
 def ground_alerts(inp: Inputs) -> pd.DataFrame:
-    """도시마다 터전점수 하위 20% 동 — 사람이 아니라 동 단위 정책으로 나간다."""
+    """도시마다 터전점수 하위 20% 동 — 사람이 아니라 동 단위 정책으로 나간다.
+    C5 동 우선순위(dong_priority.csv)가 있으면 그 동의 대응(거점 배치 / 찾아가기·이동 지원 / 연결)을 붙인다.
+    터전만으로 고르면 무작위와 다르지 않아(C5 #32), 무엇을 할지는 공급 부족 × 필요(고령 1인세대)로 갈린다."""
     out = []
     for city, g in inp.dong.groupby("도시"):
         k = int(np.ceil(len(g) * GROUND_BOTTOM))
         out.append(g.nsmallest(k, "터전점수_통신"))
-    return pd.concat(out)[["도시", "ADM_CD", "ADM_NM", "터전점수_통신", "터전순위_통신"]]
+    a = pd.concat(out)[["도시", "ADM_CD", "ADM_NM", "터전점수_통신", "터전순위_통신"]]
+    return _with_priority(inp, a)
+
+
+def _with_priority(inp: Inputs, df: pd.DataFrame) -> pd.DataFrame:
+    if inp.priority is None:
+        return df.assign(우선순위=pd.NA, 대응="")
+    return df.merge(inp.priority[["ADM_CD", "우선순위", "대응"]], on="ADM_CD", how="left").fillna({"대응": ""})
 
 
 # ------------------------------------------------------------------ 판정
@@ -368,18 +472,13 @@ def counterpart_kind(inp: Inputs, city: str, sex: str, age: str, adm_cd: str) ->
 
 # 문의 문구: 개인정보·"고립 의심" 같은 말 없이 안부 확인으로 연다(기획안 9절). 기관명만 슬롯
 INQUIRY = {
-    "가게": "안녕하세요, {기관}입니다. 겨울철 안부 확인 중인데요, 평소 자주 오시던 어르신 중에 요즘 통 안 보이시는 분이 계실까요?",
-    "경로당·마을회관": "안녕하세요, {기관}입니다. 겨울철 안부 확인 중인데요, 경로당(마을회관)에 자주 나오시던 어르신 중에 요즘 안 나오시는 분이 계실까요?",
+    "가게": "안녕하세요, {기관}입니다. 어르신 안부 확인 중인데요, 평소 자주 오시던 어르신 중에 요즘 통 안 보이시는 분이 계실까요?",
+    "경로당·마을회관": "안녕하세요, {기관}입니다. 어르신 안부 확인 중인데요, 경로당(마을회관)에 자주 나오시던 어르신 중에 요즘 안 나오시는 분이 계실까요?",
 }
 
 
 def inquiry_script(kind: str, agency: str = "OO동 행정복지센터") -> str:
     return INQUIRY[kind].format(기관=agency)
-
-
-def match_resource(*_, **__):
-    """상태별 자원 후보: 복지로·1365 정제본(res_*.parquet)을 거리·반복성·대면성으로 정렬(기획안 6절)."""
-    raise NotImplementedError("자원 정제본(scripts/fetch_welfare_api.py 산출)을 받아 10/18–20에 붙입니다")
 
 
 def log_outcome(*_, **__):
@@ -395,13 +494,48 @@ def _counterpart_text(cp: pd.DataFrame | None) -> str:
     return " · ".join(f"{r.업종}" + (f" {int(r.점포수)}곳" if has_n else f" {r.비중:.0%}") for r in cp.itertuples())
 
 
+RESOURCE_HEAD = {"끊김(빨강)": "방문 때 가져갈 복지서비스 후보", "끊김(주황)": "가벼운 연결 — 봉사·사람을 만나는 프로그램",
+                 "좁아짐": "발길을 늘리는 일감 (동 단위)"}
+
+
+def _resource_names(res: pd.DataFrame | None) -> str:
+    return " · ".join(res["이름"]) if res is not None else ""
+
+
+def _resource_lines(state: str, res: pd.DataFrame | None, vol_date: str | None) -> list[str]:
+    """자원 후보를 한 줄씩. 1365 일감은 수집일(지금) 모집 중인 것이라 시연 기준일과 날짜가 다르다고 적는다."""
+    if res is None:
+        return ["〈자원〉 자원 정제본 없음 (python scripts/fetch_welfare_api.py --from-raw)"]
+    if res.empty:
+        return []
+    marks = lambda r: " · ".join(k for k, ok in [("가까움", r.가까움), ("반복", r.반복), ("대면", r.대면)] if ok)
+    lines = [f"〈자원 · {RESOURCE_HEAD[state]}〉"]
+    lines += [f"  - [{r.출처}] {r.이름} — {r.기관} ({marks(r) or '기준 0'})" for r in res.itertuples()]
+    if (res["출처"] == "1365 봉사").any():
+        lines.append(f"  ※ 1365 일감은 {vol_date or '수집일'} 수집 시점에 모집 중인 것입니다. 시연 기준일의 일감이 아닙니다.")
+    return lines
+
+
+def next_step(state: str, together: bool) -> str:
+    """집단마다 다음에 할 일 한 줄 (draft_outreach 권고와 같은 순서, 07_에이전트 7.5 · #2). 화면 ① 「다음 행동」 열."""
+    if state.startswith("끊김") and together:
+        return "공통 사건 먼저 확인 — 같은 도시 고령 집단 동시 끊김"
+    if state == "끊김(빨강)":
+        return "본인 전화 → 닿지 않으면 발길이 닿던 곳 → 방문 (복지서비스 후보를 가져감)"
+    if state == "끊김(주황)":
+        return "본인 전화 → 닿지 않으면 발길이 닿던 곳 → 봉사·프로그램 연결"
+    if state == "좁아짐":
+        return "동 단위 프로그램·봉사 일감 (사람이 아님)"
+    return "—"
+
+
 def _window_text(k: dict) -> str:
     shops = _counterpart_text(k["업종"])
     centers = f"경로당·마을회관 {k['경로당']}곳" if k["경로당"] is not None else "경로당 수 없음 (scripts/build_facility.py)"
     return f"경로당·마을회관 먼저 — {centers} (가게: {shops})" if k["창구"] == "경로당·마을회관" else f"가게 먼저 — {shops} ({centers})"
 
 
-def draft_outreach(st: State, people: pd.DataFrame | None = None) -> str:
+def draft_outreach(st: State, people: pd.DataFrame | None = None, vol_date: str | None = None) -> str:
     """고정 문장 틀 + 수치 슬롯. 명부의 이름·연락처·주소는 문장에 넣지 않는다(E6 4절)."""
     e = st.근거
     q, b = e["질"], e["양"]
@@ -436,11 +570,13 @@ def draft_outreach(st: State, people: pd.DataFrame | None = None) -> str:
         lines += [f"  - {r.대상자ID}: 접촉 {r.경과일}일 전 · 〈터전〉 {r.터전} · 〈물어볼 곳〉 {r.물어볼곳}" for r in people.itertuples()]
         if st.상태.startswith("끊김"):
             lines += [f"〈문의 문구 · {k}〉 \"{inquiry_script(k)}\"" for k in dict.fromkeys(people["창구"])]
+    if "자원" in e:
+        lines += _resource_lines(st.상태, e["자원"], vol_date)
     if st.상태.startswith("끊김") and e.get("동시 끊김"):
         lines.append("▸ 권고: 개별 전화 전에 공통 사건(명절·큰비·한파·지역 행사)인지 먼저 확인합니다. 사건이 아니면 1단계 전화부터.")
     elif st.상태.startswith("끊김"):
         lines.append("▸ 권고: 1단계 전화. 닿지 않으면 본인이 등록한 발길이 닿던 곳(단골 가게·경로당·마을회관)에 문의"
-                     + (" → 방문 전 복지서비스 후보를 붙입니다." if "빨강" in st.상태 else "."))
+                     + (" → 방문 때 위 복지서비스 후보를 가져갑니다." if "빨강" in st.상태 else " → 위 봉사·프로그램을 권합니다."))
     elif st.상태 == "좁아짐":
         lines.append("▸ 권고: 사람이 아니라 동 단위 자원(프로그램·봉사 일감)으로 냅니다.")
     return "\n".join(lines)
@@ -462,6 +598,9 @@ def run_week(inp: Inputs, as_of: pd.Timestamp, roster: pd.DataFrame | None = Non
     """끊김 루프(주 1회) 한 번: 60·70·80대 12집단 판정 → 동시 끊김 표시 → 끊긴 칸만 상대방 업종·명부 교차."""
     states = [rate_state(inp, c, s, a, as_of) for c in CITY_SGG for s in ["남성", "여성"] for a in BREAK_AGES]
     broken = [st for st in states if st.상태.startswith("끊김")]
+    for st in states:
+        if st.상태 == "좁아짐":  # 사람이 아니라 동 단위로 나가는 일감 (기획안 6절)
+            st.근거["자원"] = match_resource(inp, st.상태, st.집단.split()[0])
     # 같은 도시 고령 6집단 중 절반 이상이 같은 창에서 끊기면 개인 사건보다 공통 사건을 먼저 의심한다(기획안 2절)
     for city in CITY_SGG:
         same = [st for st in broken if st.집단.startswith(city)]
@@ -473,6 +612,7 @@ def run_week(inp: Inputs, as_of: pd.Timestamp, roster: pd.DataFrame | None = Non
         city, sx, age = st.집단.split()
         sex = {"남": "남성", "여": "여성"}[sx]
         st.근거["상대방"] = counterpart_industries(inp, city, sex, age)
+        st.근거["자원"] = match_resource(inp, st.상태, city)
         if roster is None:
             continue
         pp = match_roster(roster, city, sex, age, as_of, top_n)
@@ -491,7 +631,7 @@ def weekly_briefing(inp: Inputs, as_of: pd.Timestamp, roster: pd.DataFrame | Non
     """끊김 루프 한 번을 담당자용 글로 낸다. 같은 내용의 표는 briefing_tables."""
     wk = run_week(inp, as_of, roster, top_n)
     broken = sorted([st for st in wk.states if st.상태.startswith("끊김")], key=lambda st: st.상태 != "끊김(빨강)")
-    blocks = [draft_outreach(st, wk.people.get(st.집단)) for st in broken]
+    blocks = [draft_outreach(st, wk.people.get(st.집단), inp.volunteer_date) for st in broken]
     narrow, ground = narrow_cells(inp), ground_alerts(inp)
     n_people = sum(len(p) for p in wk.people.values())
     head = [f"# 주간 브리핑 — {as_of:%Y-%m-%d} 기준 (지난 {WINDOW_DAYS}일 창)",
@@ -501,8 +641,14 @@ def weekly_briefing(inp: Inputs, as_of: pd.Timestamp, roster: pd.DataFrame | Non
     tail = ["", "## 좁아짐 (90대 뺀 32칸 중 상위 7칸)"]
     tail += [f"- {r.seg} (점수 {r.narrow:+.2f}, {r.좁아짐순위}위)" + (" — 청년: 끊김 감시 대상 아님" if r.AGE in ("10대", "20대") else "")
              for r in narrow.itertuples()]
+    old_narrow = sorted({r.city for r in narrow.itertuples() if r.AGE in BREAK_AGES})
+    for city in old_narrow:  # 고령 좁아짐 칸이 있는 도시만. 청년 좁아짐 자원(온라인 상담·청년참여)은 아직 없다
+        res = match_resource(inp, "좁아짐", city)
+        if res is not None and len(res):
+            lines = _resource_lines("좁아짐", res, inp.volunteer_date)[1:]
+            tail += [f"  〈{city} 고령 좁아짐 · {RESOURCE_HEAD['좁아짐']}〉"] + [f"  {ln}" for ln in lines]
     tail += ["", f"## 터전 없음 후보 (도시 안 터전점수 하위 {GROUND_BOTTOM:.0%}, 공급 지표)"]
-    tail += [f"- {r.도시} {r.ADM_NM} (약한 순 {r.터전순위_통신}위)" for r in ground.itertuples()]
+    tail += [f"- {r.도시} {r.ADM_NM} (약한 순 {r.터전순위_통신}위)" + (f" — {r.대응}" if r.대응 else "") for r in ground.itertuples()]
     return "\n".join(head + ["\n\n".join(blocks) if blocks else "이번 주 끊김 없음."] + tail)
 
 
@@ -526,6 +672,7 @@ def briefing_tables(inp: Inputs, as_of: pd.Timestamp, roster: pd.DataFrame | Non
             "질_체류비중_pct": round(e["질"]["값"], 2), "질_50대_pct": round(e["질"]["50대"], 2),
             "좁아짐상위": e["좁아짐 상위"], "상대방업종": _counterpart_text(e.get("상대방")) if st.상태.startswith("끊김") else "",
             "명부_칸인원": int(wk.people[st.집단]["칸_인원"].iloc[0]) if st.집단 in wk.people and len(wk.people[st.집단]) else None,
+            "다음행동": next_step(st.상태, bool(e.get("동시 끊김"))), "자원후보": _resource_names(e.get("자원")),
         })
     groups = pd.DataFrame(rows).astype({"명부_칸인원": "Int64"})
     sig = groups["신호"].value_counts()
@@ -547,6 +694,7 @@ def briefing_tables(inp: Inputs, as_of: pd.Timestamp, roster: pd.DataFrame | Non
     people = people.astype({"경과일": "Int64", "터전순위": "Int64"})
     ground = inp.dong[["도시", "ADM_CD", "ADM_NM", "터전점수_통신", "터전순위_통신"]].copy()
     ground["터전없음후보"] = ground["ADM_CD"].isin(ground_alerts(inp)["ADM_CD"])
+    ground = _with_priority(inp, ground).astype({"우선순위": "Int64"})  # C5 (dong_priority.csv). 없으면 빈 칸
     return {"agent_summary": summary, "agent_groups": groups, "agent_people": people, "agent_ground": ground}
 
 

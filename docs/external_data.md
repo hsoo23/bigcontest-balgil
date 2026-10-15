@@ -41,24 +41,59 @@
 - `202512_행정동별_성연령별_1인세대수_춘천시.csv` — 0.0 MB, SHA-256 `7031301da092b9e4…`
 
 **`sbiz_store`** — 공공데이터포털 파일 다운로드(소상공인시장진흥공단_상가(상권)정보_20260630.zip, 시도별 CSV 16개) 중 서울·강원 두 파일만 압축 해제해 그대로 둔다. 대상 점포 강남구 66,269 + 춘천시 17,984 = 84,253개(분석결과.md와 같은 판). 서울 CSV가 302MB라 GitHub 한도를 넘어 git에는 이 meta.json만 올린다.
-- `[필독]파일열람방법.txt` — 0.0 MB, SHA-256 `b81d2af050e9df2c…`
-- `소상공인시장진흥공단_상가(상권)정보_강원_202606.csv` — 62.6 MB, SHA-256 `6505ddc859141a3c…`
-- `소상공인시장진흥공단_상가(상권)정보_서울_202606.csv` — 301.9 MB, SHA-256 `08d3fd08b3784025…`
+- `[필독]파일열람방법.txt` — 0.0 MB, SHA-256 `b81d2af050e9df2c…` · **이 PC에 없음 — 기록만 유지**
+- `소상공인시장진흥공단_상가(상권)정보_강원_202606.csv` — 62.6 MB, SHA-256 `6505ddc859141a3c…` · **이 PC에 없음 — 기록만 유지**
+- `소상공인시장진흥공단_상가(상권)정보_서울_202606.csv` — 301.9 MB, SHA-256 `08d3fd08b3784025…` · **이 PC에 없음 — 기록만 유지**
 
 **`sgis_boundary`** — SGIS 로그인 → 자료신청 → 행정구역 경계(읍면동), 기준 2025년 2분기, 전국으로 받은 shp 세트(shp·shx·dbf·prj·cpg) 그대로. 전국 3,559개 동, 대상 강남구 22·춘천시 25개. .shp가 135MB라 GitHub 한도를 넘어 git에는 이 meta.json만 올린다. 원본은 각자 같은 방법으로 받아 이 폴더에 둔다.
-- `bnd_dong_00_2025_2Q.cpg` — 0.0 MB, SHA-256 `3ad3031f5503a440…`
-- `bnd_dong_00_2025_2Q.dbf` — 0.1 MB, SHA-256 `55ef3b6114e10424…`
-- `bnd_dong_00_2025_2Q.prj` — 0.0 MB, SHA-256 `e21b26451491c617…`
-- `bnd_dong_00_2025_2Q.shp` — 135.0 MB, SHA-256 `8f5dec93ce06be03…`
-- `bnd_dong_00_2025_2Q.shx` — 0.0 MB, SHA-256 `b04b98b8807bff24…`
+- `bnd_dong_00_2025_2Q.cpg` — 0.0 MB, SHA-256 `3ad3031f5503a440…` · **이 PC에 없음 — 기록만 유지**
+- `bnd_dong_00_2025_2Q.dbf` — 0.1 MB, SHA-256 `55ef3b6114e10424…` · **이 PC에 없음 — 기록만 유지**
+- `bnd_dong_00_2025_2Q.prj` — 0.0 MB, SHA-256 `e21b26451491c617…` · **이 PC에 없음 — 기록만 유지**
+- `bnd_dong_00_2025_2Q.shp` — 135.0 MB, SHA-256 `8f5dec93ce06be03…` · **이 PC에 없음 — 기록만 유지**
+- `bnd_dong_00_2025_2Q.shx` — 0.0 MB, SHA-256 `b04b98b8807bff24…` · **이 PC에 없음 — 기록만 유지**
 
 **`volunteer_1365`** — 1365 자원봉사 모집 일감. 서울·강원 전체를 받아 시군구 코드로 대상 지역을 거른다
-- (원본 파일 없음)
+- `raw/강원특별자치도_p001.xml` — 0.0 MB, SHA-256 `a4a1f920c7838d1d…`
+- `raw/강원특별자치도_p002.xml` — 0.0 MB, SHA-256 `f4a82d89b491565e…`
+- `raw/강원특별자치도_p003.xml` — 0.0 MB, SHA-256 `74efd95c44728c48…`
+- `raw/서울특별시_p001.xml` — 0.0 MB, SHA-256 `7063ad0f0eba469b…`
+- `raw/서울특별시_p002.xml` — 0.0 MB, SHA-256 `f5437e91298ff284…`
+- `raw/서울특별시_p003.xml` — 0.0 MB, SHA-256 `fea4f3f8c14f8951…`
+- `raw/서울특별시_p004.xml` — 0.0 MB, SHA-256 `022d7ff930ac5b0e…`
+- `raw/서울특별시_p005.xml` — 0.0 MB, SHA-256 `96cb816a0acfbc6f…`
+- `raw/서울특별시_p006.xml` — 0.0 MB, SHA-256 `02bd64042e6632a6…`
+- `raw/서울특별시_p007.xml` — 0.0 MB, SHA-256 `78a3eb39e7f345d0…`
+- `raw/서울특별시_p008.xml` — 0.0 MB, SHA-256 `95a3cd96d3ed3e5a…`
+- `raw/서울특별시_p009.xml` — 0.0 MB, SHA-256 `98f128a9855af15b…`
+- `raw/서울특별시_p010.xml` — 0.0 MB, SHA-256 `337bdec3f1aac850…`
+- `raw/서울특별시_p011.xml` — 0.0 MB, SHA-256 `67d5863fa9c8b30d…`
+- `raw/서울특별시_p012.xml` — 0.0 MB, SHA-256 `d489a2b06bfa23c1…`
+- `raw/서울특별시_p013.xml` — 0.0 MB, SHA-256 `c46621686afb8e45…`
+- `raw/서울특별시_p014.xml` — 0.0 MB, SHA-256 `1cb59af4e0a436e1…`
+- `raw/서울특별시_p015.xml` — 0.0 MB, SHA-256 `370dc973f2c114ba…`
+- `raw/서울특별시_p016.xml` — 0.0 MB, SHA-256 `0d62cbd6bec35e3a…`
+- `raw/서울특별시_p017.xml` — 0.0 MB, SHA-256 `35dbad95e83a1352…`
+- `raw/서울특별시_p018.xml` — 0.0 MB, SHA-256 `80afa4f693587419…`
+- `raw/서울특별시_p019.xml` — 0.0 MB, SHA-256 `244a7a0fa3edb4d8…`
+- `raw/서울특별시_p020.xml` — 0.0 MB, SHA-256 `40fae19bbca744e5…`
+- `raw/서울특별시_p021.xml` — 0.0 MB, SHA-256 `685507d9fa149c16…`
+- `raw/서울특별시_p022.xml` — 0.0 MB, SHA-256 `6cab42e8f3d6df2a…`
+- `raw/서울특별시_p023.xml` — 0.0 MB, SHA-256 `8bcc79cb6f498b72…`
+- `raw/서울특별시_p024.xml` — 0.0 MB, SHA-256 `937b863775bffd3e…`
+- `raw/서울특별시_p025.xml` — 0.0 MB, SHA-256 `2a7c6ba40e5670aa…`
+- `raw/서울특별시_p026.xml` — 0.0 MB, SHA-256 `444b91c577b23e9b…`
+- `raw/서울특별시_p027.xml` — 0.0 MB, SHA-256 `1e1c1433ac6da49d…`
+- `raw/서울특별시_p028.xml` — 0.0 MB, SHA-256 `3133f41cd6c512dc…`
 
 **`welfare_central`** — 복지로 중앙부처 복지서비스 목록. API 활용신청 후 인증키로 수집
-- (원본 파일 없음)
+- `raw/central_p001.xml` — 0.1 MB, SHA-256 `fd9c6cfc9056ed6b…`
+- `raw/central_p002.xml` — 0.1 MB, SHA-256 `c7d945d1a305618b…`
+- `raw/central_p003.xml` — 0.1 MB, SHA-256 `4caba9ec10651d40…`
+- `raw/central_p004.xml` — 0.1 MB, SHA-256 `24c0c3de800dcfc9…`
+- `raw/central_p005.xml` — 0.1 MB, SHA-256 `46709a57247310eb…`
 
 **`welfare_local`** — 복지로 지자체 복지서비스. 강남구·춘천시만 조회
-- (원본 파일 없음)
+- `raw/강남구_p001.xml` — 0.0 MB, SHA-256 `9d09fd7141546f7d…`
+- `raw/춘천시_p001.xml` — 0.0 MB, SHA-256 `591a51d388aea903…`
 
 <!-- END: 자동 생성 -->
