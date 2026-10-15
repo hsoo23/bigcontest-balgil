@@ -136,6 +136,9 @@ VOL_ONCE = r"행사|잔치|대회|축제|공연|캠페인|하루|당일|일일" 
 ELDER_WORDS = r"어르신|노인|경로|시니어|실버|노년|고령|독거|치매|장기요양|기초연금"
 # 집단 판정으로는 알 수 없는 자격(장애·보훈·노숙 등)이 따로 있는 복지사업은 후보에서 뺀다
 NEEDS_OWN_ELIGIBILITY = r"장애|보훈|유공자|참전|무공|한센|사할린|노숙|출산"
+# 학대 신고·조사 기관은 자동 제안하지 않는다. 판정은 학대 위험을 재지 않아, 집단 끊김에 붙이면 근거 없는 의심이 된다.
+# 방문 뒤 사람이 판단해 연결하는 경로다(#44 현수 리뷰)
+NOT_AUTO_SUGGESTED = r"보호전문기관"
 RED_THEMES = {"신체건강", "생활지원", "보호·돌봄", "안전·위기", "에너지", "주거", "서민금융"}  # 필수까지 끊김 = 건강·생계 쪽
 
 
@@ -152,7 +155,7 @@ def _load_resources(central: pd.DataFrame, local: pd.DataFrame, vol: pd.DataFram
     w = pd.concat([c, l], ignore_index=True)
     life = split(w.pop("생애"))
     w["노년"] = life.map(lambda t: t == ["노년"]) | (life.map(lambda t: "노년" in t) & w["이름"].str.contains(ELDER_WORDS))
-    w = w[w["노년"] & ~w["이름"].str.contains(NEEDS_OWN_ELIGIBILITY)].copy()
+    w = w[w["노년"] & ~w["이름"].str.contains(f"{NEEDS_OWN_ELIGIBILITY}|{NOT_AUTO_SUGGESTED}")].copy()
     w["가까움"] = w["출처"] == "지자체 복지"
     w["반복"] = w["주기"].isin(REPEAT_CYCLES)
     w["대면"] = w["제공"].fillna("").str.contains("|".join(FACE_TO_FACE), regex=True)
