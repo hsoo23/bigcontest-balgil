@@ -76,9 +76,12 @@ python scripts/build_external.py      # 외부 데이터 정제
 python scripts/build_spatial.py       # 행정동 기준으로 전 데이터 연결
 python scripts/build_dong_code.py     # 47개 동 코드 대조표 → data/reference/dong_code.csv (C1, git에 올림)
 python scripts/fetch_facility_api.py  # 경로당·도서관 전국 전체를 Open API로 받기 (.env 키 필요)
+python scripts/fetch_welfare_api.py   # 복지로·1365 자원 목록 받기 (.env 키 필요, 키 없으면 --from-raw로 올린 원본에서 다시 만듦)
 python scripts/build_facility.py      # 경로당·도서관 좌표 → 행정동, 동별 시설 수 (C3)
 python scripts/build_ground.py        # 47개 동 터전 표(통신·상가·시설) → data/reference/dong_ground.csv (C3, git에 올림)
 python scripts/build_weather.py       # ASOS 일자 × 시군구 기상 테이블 (B4)
+python scripts/explore_weather.py     # 기상 결합표 → data/reference/weather_daily.csv, 끊김·예상과 대조 (B4, git에 올림)
+python scripts/build_priority.py      # 동 우선순위표·도달 효율 → data/reference/dong_priority.csv, reach_efficiency.csv (C5, git에 올림)
 python scripts/build_features.py      # 지표 산출
 ```
 
@@ -94,7 +97,7 @@ streamlit run app/balgil_app.py             # 탭 4개: 주간 브리핑 · 발�
 # http://localhost:8501/?screen=3 처럼 붙이면 그 화면만 (캡처·데모용)
 ```
 
-화면은 git에 있는 파일만 읽어서 **원본 데이터 없이도 뜹니다** — `reanalysis/reference/`(재분석 결과)와 `data/reference/app/`(지도·시설·SHAP). 원본이 바뀌면 `python scripts/build_app_data.py`로 다시 만듭니다.
+화면은 git에 있는 파일만 읽어서 **원본 데이터 없이도 뜹니다** — `reanalysis/reference/`(재분석 결과)와 `data/reference/app/`(지도·시설·SHAP, 화면 ①의 `agent.py` 주간 표). 원본이 바뀌면 `python scripts/build_app_data.py`로 다시 만듭니다.
 
 ## 검증 스크립트
 

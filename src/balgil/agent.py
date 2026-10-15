@@ -6,12 +6,14 @@ LLM은 부르지 않는다. 문장은 고정 틀에 계산값을 슬롯으로 �
 지금 되는 것 (데이터로 되는 도구)
   measure_breadth · measure_quality   양·질      ← features_segment(_month)  (A2, PR #12)
   detect_break · correct_shock        연속성      ← reanalysis break_daily    (b2_continuity, 7일 창)
+  check_weather                       날씨 꼬리표  ← data/reference/weather_daily.csv (B4, PR #31)
   map_ground                          터전        ← features_dong             (A4, PR #12)
   rate_state                          네 상태 판정
   match_roster                        명부 교차    ← 가상 명부 (입력 형식: docs/agent_입력형식.md)
   find_counterpart                    상대방 업종·동 점포 수 ← segment_industry · dong_industry_stores
                                       (scripts/build_segment_industry.py). D4 장소 표가 오면 장소까지
-  draft_outreach                      고정 문장 틀
+  counterpart_kind                    먼저 물을 창구(가게 / 경로당·마을회관) ← 위 + fac_dong (build_facility.py)
+  draft_outreach · inquiry_script     고정 문장 틀, 창구별 문의 문구
   briefing_tables                     D3 화면용 표 넷 (--out)
 아직 안 되는 것 (자원 정제본·종결 형식 확정 뒤, 10/18–20)
   match_resource · log_outcome
@@ -45,6 +47,8 @@ WINDOW_DAYS = 7
 NARROW_TOP = 7                         # 90대 뺀 32칸 중 좁아짐 상위 7칸(21.9%) — 모델 라벨과 같은 선
 GROUND_BOTTOM = 0.2                    # 도시 안 터전점수 하위 20%를 터전 없음 후보로 (기획안 3절 분위수 기준)
 SEVERITY = {"빨강(필수까지 끊김)": 2, "주황(대면만 끊김)": 1, "-": 0}
+WEATHER_PATH = ROOT / "data" / "reference" / "weather_daily.csv"
+BAD_WEATHER = ["큰비", "폭염", "한파", "대설"]  # 특보 기준을 일자료로 옮긴 근사값 (scripts/explore_weather.py)
 
 # reanalysis/reference/features_dong.csv → 동 패널 열 이름
 _REF_DONG = {"행정동코드": "ADM_CD", "이름(추정)": "ADM_NM", "60대 이상 비중": "60대이상_비중",
@@ -69,6 +73,8 @@ class Inputs:
     dong: pd.DataFrame           # 47동 (터전)
     industry: pd.DataFrame | None = None  # 집단 × 상대방 후보 업종 쏠림 (build_segment_industry.py)
     dong_stores: pd.DataFrame | None = None  # 동 × 업종 점포 수 (같은 스크립트, 상가 원본 필요)
+    facilities: pd.DataFrame | None = None   # 동 × 경로당·도서관 수 (현수 build_facility.py, C3)
+    weather: pd.DataFrame | None = None  # 일자 × 도시 기상과 궂은 날 표시 (explore_weather.py, git에 올림)
     sources: dict = field(default_factory=dict)
 
 
@@ -91,11 +97,15 @@ def load_inputs() -> Inputs:
     dong["ADM_CD"] = dong["ADM_CD"].astype(str)
     src = {"segment": p_seg, "segment_month": p_mon, "breaks": p_brk, "dong": p_dong}
     opt = {}
-    for key, name in [("industry", "segment_industry.parquet"), ("dong_stores", "dong_industry_stores.parquet")]:
+    for key, name in [("industry", "segment_industry.parquet"), ("dong_stores", "dong_industry_stores.parquet"),
+                      ("facilities", "fac_dong.parquet")]:
         path = PROCESSED_DIR / name
         opt[key] = pd.read_parquet(path) if path.exists() else None
         if path.exists():
             src[key] = path
+    if WEATHER_PATH.exists():
+        opt["weather"] = pd.read_csv(WEATHER_PATH, parse_dates=["date"], encoding="utf-8-sig")
+        src["weather"] = WEATHER_PATH
     return Inputs(seg, mon, brk, dong, sources=src, **opt)
 
 
@@ -157,6 +167,20 @@ def correct_shock(inp: Inputs, city: str, sex: str, age: str, as_of: pd.Timestam
     return {"보정 없음": int(w["al0"].sum()), "계절형 보정": int(w["al1"].sum()), "공통 충격 보정": int(w["al2"].sum())}
 
 
+def check_weather(inp: Inputs, city: str, broken_days: list[pd.Timestamp]) -> dict | None:
+    """끊긴 날들의 7일 창 안에 궂은 날(큰비·폭염·한파·대설)이 있었는가 → 「날씨 가능」 꼬리표.
+    break_daily의 날짜는 창의 끝날이라, 첫 끊긴 날 6일 전부터 마지막 끊긴 날까지를 본다.
+    알림은 지우지 않는다 — 기준이 근사값이고, 비 오는 주에 실제로 고립이 깊어질 수도 있다(B4 메모 4절)."""
+    if inp.weather is None or not broken_days:
+        return None
+    lo, hi = min(broken_days) - pd.Timedelta(days=WINDOW_DAYS - 1), max(broken_days)
+    w = inp.weather[(inp.weather["city"] == city) & inp.weather["date"].between(lo, hi)]
+    days = {k: [d.strftime("%m/%d") for d in w.loc[w[k], "date"]] for k in BAD_WEATHER}
+    days = {k: v for k, v in days.items() if v}
+    return {"날씨 가능": bool(days), "궂은 날": days,
+            "요약": " · ".join(f"{k} {len(v)}일({'·'.join(v)})" for k, v in days.items())}
+
+
 # ------------------------------------------------------------------ 터전
 def map_ground(inp: Inputs, adm_cd: str) -> dict:
     """동의 터전(통신). 터전점수는 도시 안 순위 평균이고 낮을수록 약하다. 공급 지표로 쓴다(#6)."""
@@ -198,6 +222,8 @@ def rate_state(inp: Inputs, city: str, sex: str, age: str, as_of: pd.Timestamp) 
         ev["보정"] = correct_shock(inp, city, sex, age, as_of)
         if ev["연속성"]["상태"] != "-":
             color = "빨강" if ev["연속성"]["상태"].startswith("빨강") else "주황"
+            hit = _window(inp, city, sex, age, as_of).query("state != '-'")["date"].tolist()
+            ev["날씨"] = check_weather(inp, city, hit)
             return State(seg_name(city, sex, age), f"끊김({color})", ev)
     return State(seg_name(city, sex, age), "좁아짐" if ev["좁아짐 상위"] else "정상", ev)
 
@@ -206,13 +232,75 @@ def rate_state(inp: Inputs, city: str, sex: str, age: str, as_of: pd.Timestamp) 
 ROSTER_COLUMNS = ["대상자ID", "시군구", "성", "연령대", "행정동코드", "마지막접촉일", "명부종류"]
 
 
-def read_roster(path: Path) -> pd.DataFrame:
-    r = pd.read_csv(path, dtype={"행정동코드": str}, encoding="utf-8-sig")
+ROSTER_VALUES = {"시군구": set(CITY_SGG.values()), "성": {"남성", "여성"}, "연령대": set(BREAK_AGES)}
+PLACE_COLUMNS = ["장소ID", "종류", "이름", "행정동코드", "업종", "게이트키퍼"]
+PLACE_KINDS = {"가게", "경로당", "마을회관"}
+
+
+def _bad_rows(df: pd.DataFrame, mask: pd.Series, id_col: str, what: str) -> str:
+    rows = df.loc[mask]
+    fmt = lambda v: v.strftime("%Y-%m-%d") if isinstance(v, pd.Timestamp) else v
+    shown = ", ".join(f"{i}({fmt(v)})" for i, v in zip(rows[id_col].head(5), rows[what].head(5)))
+    return f"{what} 값이 허용 범위 밖인 행 {int(mask.sum())}개: {shown}"
+
+
+def _check_dong(df: pd.DataFrame, inp: Inputs, id_col: str) -> pd.DataFrame:
+    """행정동코드는 SGIS 8자리(dong_code.csv의 ADM_CD 47개)만 받는다. 예전 SK 코드는 바꿔 주고, 그 밖은 멈춘다."""
+    df["행정동코드"] = df["행정동코드"].astype(str).str.strip().replace(_SK_OLD_CODE)
+    bad = ~df["행정동코드"].isin(set(inp.dong["ADM_CD"]))
+    if bad.any():
+        raise ValueError(_bad_rows(df, bad, id_col, "행정동코드")
+                         + " — SGIS 8자리(data/reference/dong_code.csv의 ADM_CD)만 됩니다. 행안부 10자리는 안 됩니다"
+                         " (예전 SK 코드 11230740만 개포3동으로 바꿔 받습니다)")
+    return df
+
+
+def read_roster(path: Path, inp: Inputs, as_of: pd.Timestamp) -> pd.DataFrame:
+    """명부를 읽고 검사한다. 값이 틀린 행이 조용히 교차에서 빠지지 않도록 멈춘다(현수 #27 리뷰).
+    90대는 끊김을 판정하지 않아 일부러 빼는 것이므로 경고만 낸다."""
+    r = pd.read_csv(path, dtype=str, encoding="utf-8-sig")
     missing = [c for c in ROSTER_COLUMNS if c not in r]
     if missing:
         raise ValueError(f"명부에 필수 열이 없습니다: {missing} (docs/agent_입력형식.md)")
-    r["마지막접촉일"] = pd.to_datetime(r["마지막접촉일"])
+    for c in ROSTER_COLUMNS:
+        r[c] = r[c].str.strip()
+    if r["대상자ID"].duplicated().any():
+        raise ValueError(f"대상자ID가 겹칩니다: {sorted(set(r.loc[r['대상자ID'].duplicated(), '대상자ID']))[:5]}")
+    old = r["연령대"] == "90대"
+    if old.any():
+        print(f"[경고] 90대 {int(old.sum())}명은 끊김 판정 대상이 아니라 교차에서 뺍니다")
+        r = r[~old].copy()
+    for c, ok in ROSTER_VALUES.items():
+        bad = ~r[c].isin(ok)
+        if bad.any():
+            raise ValueError(_bad_rows(r, bad, "대상자ID", c) + f" — 허용값 {sorted(ok)}")
+    r = _check_dong(r, inp, "대상자ID")
+    r["마지막접촉일"] = pd.to_datetime(r["마지막접촉일"], errors="coerce")
+    if r["마지막접촉일"].isna().any():
+        raise ValueError(_bad_rows(r, r["마지막접촉일"].isna(), "대상자ID", "대상자ID") + " — 마지막접촉일은 YYYY-MM-DD")
+    late = r["마지막접촉일"] > as_of
+    if late.any():
+        raise ValueError(_bad_rows(r, late, "대상자ID", "마지막접촉일")
+                         + f" — 기준일 {as_of:%Y-%m-%d}보다 늦습니다. 접촉일은 가장 이른 시연 기준일 이전으로 만듭니다")
     return r
+
+
+def read_places(path: Path, inp: Inputs) -> pd.DataFrame:
+    """발길이 닿던 곳 표(D4)를 읽고 검사한다. 행정동코드를 문자열로 고정한다 — 정수로 읽히면 비교가 0건이 된다."""
+    p = pd.read_csv(path, dtype=str, encoding="utf-8-sig")
+    missing = [c for c in PLACE_COLUMNS if c not in p]
+    if missing:
+        raise ValueError(f"장소 표에 필수 열이 없습니다: {missing} (docs/agent_입력형식.md 2절)")
+    for c in PLACE_COLUMNS:
+        p[c] = p[c].fillna("").str.strip()
+    for c, ok in {"종류": PLACE_KINDS, "게이트키퍼": {"Y", "N"}}.items():
+        bad = ~p[c].isin(ok)
+        if bad.any():
+            raise ValueError(_bad_rows(p, bad, "장소ID", c) + f" — 허용값 {sorted(ok)}")
+    shop_no_ind = (p["종류"] == "가게") & (p["업종"] == "")
+    if shop_no_ind.any():
+        raise ValueError(_bad_rows(p, shop_no_ind, "장소ID", "업종") + " — 가게는 카드 업종 이름이 필요합니다")
+    return _check_dong(p, inp, "장소ID")
 
 
 def match_roster(roster: pd.DataFrame, city: str, sex: str, age: str, as_of: pd.Timestamp, top_n: int = 3) -> pd.DataFrame:
@@ -243,7 +331,7 @@ def find_counterpart(inp: Inputs, city: str, sex: str, age: str, adm_cd: str | N
                      places: pd.DataFrame | None = None, n: int = 3) -> pd.DataFrame | None:
     """발길이 닿던 곳 후보 (기획안 4절 2단계).
     ① 집단의 평소 업종 쏠림 → ② 대상자 동의 그 업종 점포 수(상가) → ③ D4 장소 표가 있으면 그 동의 해당 업종
-    가게와 경로당·마을회관을 게이트키퍼 지정 순으로 (#6: 가게가 적은 동은 경로당이 창구). 상호는 상가에서 내지 않는다."""
+    가게와 경로당·마을회관을 게이트키퍼 지정 순으로 (#6: 가게가 적은 동은 경로당·마을회관이 창구). 상호는 상가에서 내지 않는다."""
     ind = counterpart_industries(inp, city, sex, age, n)
     if ind is None:
         return None
@@ -256,6 +344,37 @@ def find_counterpart(inp: Inputs, city: str, sex: str, age: str, adm_cd: str | N
         p = p[p["종류"].isin(["경로당", "마을회관"]) | p["업종"].isin(ind["업종"])]
         return p.sort_values(["게이트키퍼", "종류"], ascending=[False, True])
     return ind
+
+
+SHOP_PER_CENTER = 3  # 상대방 업종 가게가 경로당의 3배가 안 되는 동은 경로당을 먼저 (10/17 확정 전 초안)
+
+
+def counterpart_kind(inp: Inputs, city: str, sex: str, age: str, adm_cd: str) -> dict:
+    """그 대상자에게 먼저 물을 창구: 가게인가 경로당·마을회관인가 (#6, #26).
+    춘천 면 지역은 가게가 적고 60세+ 천 명당 경로당이 많다(60세+ 천 명당 체류형 점포 × 경로당·마을회관, 춘천 −0.79, n=25;
+    강남 0.03. 분석결과 4.7, C3 #30. 수치는 10/17 수치표). 단골 가게를 전제하면 터전점수가 낮아
+    확인 창구가 가장 필요한 동에서 2단계가 빈다. 그 동의 상대방 업종 가게 수와 경로당·마을회관 수를 견줘 고른다.
+    가게 수나 경로당 수를 모르면 가게로 둔다(기획안 4절 기본값).
+    데이터가 주는 것은 후보 위치까지다. 실제로 다니던 곳·연락 경로는 본인 등록(D2)으로만 받는다(07_에이전트 7.5)."""
+    ind = find_counterpart(inp, city, sex, age, adm_cd)
+    shops = int(ind["점포수"].sum()) if ind is not None and "점포수" in ind else None
+    centers = None
+    if inp.facilities is not None:
+        f = inp.facilities[inp.facilities["ADM_CD"].astype(str) == str(adm_cd)]
+        centers = int(f["경로당수"].iloc[0]) if len(f) else None
+    first = "경로당·마을회관" if shops is not None and centers and shops < SHOP_PER_CENTER * centers else "가게"
+    return {"창구": first, "가게후보": shops, "경로당": centers, "업종": ind}
+
+
+# 문의 문구: 개인정보·"고립 의심" 같은 말 없이 안부 확인으로 연다(기획안 9절). 기관명만 슬롯
+INQUIRY = {
+    "가게": "안녕하세요, {기관}입니다. 겨울철 안부 확인 중인데요, 평소 자주 오시던 어르신 중에 요즘 통 안 보이시는 분이 계실까요?",
+    "경로당·마을회관": "안녕하세요, {기관}입니다. 겨울철 안부 확인 중인데요, 경로당(마을회관)에 자주 나오시던 어르신 중에 요즘 안 나오시는 분이 계실까요?",
+}
+
+
+def inquiry_script(kind: str, agency: str = "OO동 행정복지센터") -> str:
+    return INQUIRY[kind].format(기관=agency)
 
 
 def match_resource(*_, **__):
@@ -276,6 +395,12 @@ def _counterpart_text(cp: pd.DataFrame | None) -> str:
     return " · ".join(f"{r.업종}" + (f" {int(r.점포수)}곳" if has_n else f" {r.비중:.0%}") for r in cp.itertuples())
 
 
+def _window_text(k: dict) -> str:
+    shops = _counterpart_text(k["업종"])
+    centers = f"경로당·마을회관 {k['경로당']}곳" if k["경로당"] is not None else "경로당 수 없음 (scripts/build_facility.py)"
+    return f"경로당·마을회관 먼저 — {centers} (가게: {shops})" if k["창구"] == "경로당·마을회관" else f"가게 먼저 — {shops} ({centers})"
+
+
 def draft_outreach(st: State, people: pd.DataFrame | None = None) -> str:
     """고정 문장 틀 + 수치 슬롯. 명부의 이름·연락처·주소는 문장에 넣지 않는다(E6 4절)."""
     e = st.근거
@@ -291,10 +416,15 @@ def draft_outreach(st: State, people: pd.DataFrame | None = None) -> str:
                          f"줄었습니다(대면 최저 {c['대면 최저(%)']:+d}%, 필수 최저 {c['필수 최저(%)']:+d}%).")
             lines.append(f"〈보정〉 같은 7일에 보정 없이 {s['보정 없음']}일 → 계절 보정 {s['계절형 보정']}일 → "
                          f"같은 도시 30·40대 차감 {s['공통 충격 보정']}일.")
+            wx = e.get("날씨")
+            if wx and wx["날씨 가능"]:
+                lines.append(f"〈날씨 가능〉 끊긴 창 안에 {wx['요약']}. 날씨로 발길이 준 것일 수 있지만, "
+                             "궂은 주에 고립이 깊어지기도 해서 알림은 그대로 둡니다.")
             if e.get("동시 끊김"):
                 k, n = e["동시 끊김"]
+                cands = (["공휴일 주간"] if c["공휴일 주간"] else []) + [f"{t} {len(v)}일" for t, v in (wx or {}).get("궂은 날", {}).items()]
                 lines.append(f"〈동시〉 같은 도시 고령 {n}개 집단 중 {k}개가 같은 7일에 함께 끊겼습니다"
-                             + (" (공휴일 주간과 겹침)" if c["공휴일 주간"] else "")
+                             + (f" (공통 사건 후보: {' · '.join(cands)})" if cands else "")
                              + ". 30·40대를 빼고도 남은 공통 사건일 수 있습니다.")
         else:
             lines.append(f"〈연속성〉 지난 {WINDOW_DAYS}일 끊김 없음.")
@@ -304,10 +434,12 @@ def draft_outreach(st: State, people: pd.DataFrame | None = None) -> str:
         days = " · ".join(f"{d}일" for d in people["경과일"])
         lines.append(f"〈명부〉 이 칸에 드는 대상자 {int(people['칸_인원'].iloc[0])}명 중 마지막 접촉이 가장 오래된 {len(people)}명 ({days}).")
         lines += [f"  - {r.대상자ID}: 접촉 {r.경과일}일 전 · 〈터전〉 {r.터전} · 〈물어볼 곳〉 {r.물어볼곳}" for r in people.itertuples()]
+        if st.상태.startswith("끊김"):
+            lines += [f"〈문의 문구 · {k}〉 \"{inquiry_script(k)}\"" for k in dict.fromkeys(people["창구"])]
     if st.상태.startswith("끊김") and e.get("동시 끊김"):
-        lines.append("▸ 권고: 개별 전화 전에 공통 사건(명절·한파·지역 행사)인지 먼저 확인합니다. 사건이 아니면 1단계 전화부터.")
+        lines.append("▸ 권고: 개별 전화 전에 공통 사건(명절·큰비·한파·지역 행사)인지 먼저 확인합니다. 사건이 아니면 1단계 전화부터.")
     elif st.상태.startswith("끊김"):
-        lines.append("▸ 권고: 1단계 전화. 닿지 않으면 본인이 등록한 발길이 닿던 곳(단골 가게·경로당)에 문의"
+        lines.append("▸ 권고: 1단계 전화. 닿지 않으면 본인이 등록한 발길이 닿던 곳(단골 가게·경로당·마을회관)에 문의"
                      + (" → 방문 전 복지서비스 후보를 붙입니다." if "빨강" in st.상태 else "."))
     elif st.상태 == "좁아짐":
         lines.append("▸ 권고: 사람이 아니라 동 단위 자원(프로그램·봉사 일감)으로 냅니다.")
@@ -348,7 +480,9 @@ def run_week(inp: Inputs, as_of: pd.Timestamp, roster: pd.DataFrame | None = Non
         pp["행정동"] = [g["동"] for g in grounds]
         pp["터전순위"] = [g["순위"] for g in grounds]
         pp["터전"] = [f"{g['동']} 터전 약한 순 {g['순위']}/{g['동 수']}" + (" (하위 20%)" if g["하위 20%"] else "") for g in grounds]
-        pp["물어볼곳"] = [_counterpart_text(find_counterpart(inp, city, sex, age, cd)) for cd in pp["행정동코드"]]
+        kinds = [counterpart_kind(inp, city, sex, age, cd) for cd in pp["행정동코드"]]
+        pp["창구"] = [k["창구"] for k in kinds]
+        pp["물어볼곳"] = [_window_text(k) for k in kinds]
         people[st.집단] = pp
     return Week(as_of, states, people)
 
@@ -384,7 +518,8 @@ def briefing_tables(inp: Inputs, as_of: pd.Timestamp, roster: pd.DataFrame | Non
         rows.append({
             "기준일": as_of.date(), "집단": st.집단, "도시": city, "성": {"남": "남성", "여": "여성"}[sx], "연령": age,
             "신호": SIGNAL[st.상태], "상태": st.상태, "끊김종류": BREAK_KIND.get(st.상태, ""),
-            "동시끊김": bool(e.get("동시 끊김")), "끊김일수": c.get("끊김 일수", 0), "끊긴날": " ".join(c.get("끊긴 날", [])),
+            "동시끊김": bool(e.get("동시 끊김")), "날씨가능": bool((e.get("날씨") or {}).get("날씨 가능")),
+            "궂은날": (e.get("날씨") or {}).get("요약", ""), "끊김일수": c.get("끊김 일수", 0), "끊긴날": " ".join(c.get("끊긴 날", [])),
             "대면_7일최저_pct": c.get("대면 최저(%)"), "필수_7일최저_pct": c.get("필수 최저(%)"),
             "경보_보정없음": s.get("보정 없음"), "경보_계절보정": s.get("계절형 보정"), "경보_공통충격보정": s.get("공통 충격 보정"),
             "양_유효발길수": round(e["양"]["값"], 2), "양_50대": round(e["양"]["50대"], 2),
@@ -400,14 +535,16 @@ def briefing_tables(inp: Inputs, as_of: pd.Timestamp, roster: pd.DataFrame | Non
         "확인권고_집단": int(groups["상태"].str.startswith("끊김").sum()),
         "지난주_확인권고_집단": sum(st.상태.startswith("끊김") for st in prev.states),
         "빨강": int(sig.get("빨강", 0)), "주황": int(sig.get("주황", 0)), "노랑": int(sig.get("노랑", 0)), "초록": int(sig.get("초록", 0)),
+        "날씨가능_집단": int(groups["날씨가능"].sum()),
         "확인권고_인원": sum(len(p) for p in wk.people.values()) if roster is not None else None,
         # 12집단 × 7일 중 경보일 합. 보정이 경보를 지우기도 하고(명절) 드러내기도 한다(30·40대만 오른 주)
         "경보일_보정없음": int(alarms["경보_보정없음"]), "경보일_계절보정": int(alarms["경보_계절보정"]),
         "경보일_공통충격보정": int(alarms["경보_공통충격보정"]),
     }])
     people = (pd.concat([p.assign(집단=k) for k, p in wk.people.items()], ignore_index=True)
-              [["집단", "대상자ID", "명부종류", "경과일", "행정동코드", "행정동", "터전순위", "물어볼곳"]]
-              if wk.people else pd.DataFrame(columns=["집단", "대상자ID", "명부종류", "경과일", "행정동코드", "행정동", "터전순위", "물어볼곳"]))
+              [["집단", "대상자ID", "명부종류", "경과일", "행정동코드", "행정동", "터전순위", "창구", "물어볼곳"]]
+              if wk.people else pd.DataFrame(columns=["집단", "대상자ID", "명부종류", "경과일", "행정동코드", "행정동", "터전순위", "창구", "물어볼곳"]))
+    people = people.astype({"경과일": "Int64", "터전순위": "Int64"})
     ground = inp.dong[["도시", "ADM_CD", "ADM_NM", "터전점수_통신", "터전순위_통신"]].copy()
     ground["터전없음후보"] = ground["ADM_CD"].isin(ground_alerts(inp)["ADM_CD"])
     return {"agent_summary": summary, "agent_groups": groups, "agent_people": people, "agent_ground": ground}
@@ -417,12 +554,16 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="발길 에이전트 주간 브리핑 (D1 뼈대)")
     ap.add_argument("--as-of", default=None, help="기준일 YYYY-MM-DD (기본: 끊김 자료의 마지막 날)")
     ap.add_argument("--roster", type=Path, default=None, help="가상 명부 CSV (docs/agent_입력형식.md)")
-    ap.add_argument("--top", type=int, default=3)
+    ap.add_argument("--places", type=Path, default=None, help="발길이 닿던 곳 CSV (D4). 지금은 형식 검사만, 브리핑 연결은 10/18–20")
+    ap.add_argument("--top", type=int, default=3, help="끊긴 칸마다 올릴 대상자 수 (기획안 4절 상위 N명)")
     ap.add_argument("--out", type=Path, default=None, help="D3 화면용 표를 쓸 폴더 (예: data/processed/agent)")
     a = ap.parse_args()
     inp = load_inputs()
     as_of = pd.Timestamp(a.as_of) if a.as_of else inp.breaks["date"].max()
-    roster = read_roster(a.roster) if a.roster else None
+    roster = read_roster(a.roster, inp, as_of) if a.roster else None
+    if a.places:
+        places = read_places(a.places, inp)
+        print(f"장소 표 검사 통과: {len(places)}곳 ({places['종류'].value_counts().to_dict()})\n")
     print(weekly_briefing(inp, as_of, roster, a.top))
     if a.out:
         a.out.mkdir(parents=True, exist_ok=True)
