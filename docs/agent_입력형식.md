@@ -4,6 +4,16 @@
 
 현수 D4(가상 데이터)와 D2(본인 등록)가 이 형식에 맞춰 만들고, D1 `agent.py`가 그대로 읽습니다. 확정 전까지 열 이름과 값은 바뀔 수 있습니다. 바꾸고 싶은 곳은 #6에 적어 주세요.
 
+> **이 형식으로 만드는 명부·장소 파일은 모두 가상 데이터입니다.** 실제 돌봄 대상자 자료는 받지 않았고 쓰지도 않습니다.
+> 규정이 가상 데이터에 **생성 방식 설명자료(E5)** 를 요구하므로, 만든 파일은 아래 두 가지를 지킵니다.
+>
+> - **파일명에 `_가상`** 을 붙입니다 (`roster_example_가상.csv`)
+> - **`비고` 열에 "가상 데이터 — 실제 인물이 아닙니다"** 를 모든 행에 넣습니다
+>
+> `명부종류`에 `노인맞춤돌봄`·`독거노인 안전확인` 같은 **실존 사업명**이 들어가고 행정동코드·날짜도 실제 형식이라,
+> 표기가 없으면 파일만 떼어 봤을 때 실제 개인정보를 다룬 것으로 읽힙니다. `비고` 열은 `agent.py`가 읽지 않습니다
+> (`read_roster`는 필수 열만 확인하고 남는 열은 그대로 둡니다).
+
 ## 0. 단위 원칙 (#14, #20)
 
 - **끊김·좁아짐은 시군구 × 성 × 연령 집단**입니다. 카드 지표는 동에 붙이지 않습니다.
@@ -13,7 +23,7 @@
 
 ## 1. 돌봄 명부 (D4) — `match_roster`
 
-CSV, UTF-8. 한 줄이 대상자 한 명입니다. 예시: [`docs/agent_example/roster_example.csv`](agent_example/roster_example.csv)
+CSV, UTF-8. 한 줄이 대상자 한 명입니다. 예시: [`docs/agent_example/roster_example_가상.csv`](agent_example/roster_example_%EA%B0%80%EC%83%81.csv)
 
 | 열 | 필수 | 값 | 쓰는 곳 |
 |---|---|---|---|
@@ -98,7 +108,7 @@ CSV, UTF-8. 한 줄이 대상자 한 명입니다. 예시: [`docs/agent_example/
 
 ```bash
 python scripts/build_segment_industry.py      # 상대방 업종·동 점포 수 (처음 한 번)
-python scripts/run_agent.py --as-of 2025-10-01 --roster docs/agent_example/roster_example.csv --out data/processed/agent
+python scripts/run_agent.py --as-of 2025-10-01 --roster docs/agent_example/roster_example_가상.csv --out data/processed/agent
 ```
 
 `--as-of`를 빼면 끊김 자료의 마지막 날(2025-12-31)로 돕니다.
