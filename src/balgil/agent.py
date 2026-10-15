@@ -386,8 +386,12 @@ def read_roster(path: Path, inp: Inputs, as_of: pd.Timestamp) -> pd.DataFrame:
         raise ValueError(_bad_rows(r, r["마지막접촉일"].isna(), "대상자ID", "대상자ID") + " — 마지막접촉일은 YYYY-MM-DD")
     late = r["마지막접촉일"] > as_of
     if late.any():
-        print(f"[경고] 마지막접촉일이 기준일 {as_of:%Y-%m-%d}보다 늦은 {int(late.sum())}명은 그 기준일의 교차에서 뺍니다 "
-              "(그 주에는 아직 없는 기록)")
+        # 멈추지 않으므로 연도 오타(2026-…) 같은 실수를 잡을 그물은 이 경고뿐이다 — 누구인지 적는다(#48 윤지 리뷰)
+        rows = r.loc[late]
+        shown = ", ".join(f"{i}({d:%Y-%m-%d})" for i, d in zip(rows["대상자ID"].head(5), rows["마지막접촉일"].head(5)))
+        more = f" 외 {len(rows) - 5}명" if len(rows) > 5 else ""
+        print(f"[경고] 마지막접촉일이 기준일 {as_of:%Y-%m-%d}보다 늦습니다 — {shown}{more} ({len(rows)}명). "
+              "그 기준일의 교차에서 뺍니다 (그 주에는 아직 없는 기록)")
     return r
 
 
