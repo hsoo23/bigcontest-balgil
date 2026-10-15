@@ -93,11 +93,27 @@ python scripts/build_features.py      # 지표 산출
 
 ```bash
 pip install -r app/requirements-app.txt     # 분석 고정 버전 + streamlit·folium
-streamlit run app/balgil_app.py             # 탭 4개: 주간 브리핑 · 발길 상세 · 지도 · 보정 전·후
+streamlit run app/balgil_app.py             # 탭 4개: 주간 브리핑 · 발길 상세 · 터전 지도 · 보정 전·후
 # http://localhost:8501/?screen=3 처럼 붙이면 그 화면만 (캡처·데모용)
 ```
 
-화면은 git에 있는 파일만 읽어서 **원본 데이터 없이도 뜹니다** — `reanalysis/reference/`(재분석 결과)와 `data/reference/app/`(지도·시설·SHAP, 화면 ①의 `agent.py` 주간 표). 원본이 바뀌면 `python scripts/build_app_data.py`로 다시 만듭니다.
+화면은 git에 있는 파일만 읽어서 **원본 데이터 없이도 뜹니다** — `reanalysis/reference/`(재분석 결과), `data/reference/app/`(지도·시설·SHAP, 화면 ①의 `agent.py` 주간 표), `data/reference/dong_priority.csv`·`reach_efficiency.csv`(화면 ③ 공급 × 필요, C5). 원본이 바뀌면 `python scripts/build_app_data.py`로 다시 만듭니다.
+
+| 화면 | 무엇을 보나 |
+|---|---|
+| ① 주간 브리핑 | 60대 이상 12집단의 이번 주 신호(빨강·주황·노랑·초록)와 다음 행동. 기본값은 시연 기준일 주 |
+| ② 발길 상세 | 한 집단의 양·질·연속성 추이, 그 시군구의 터전 약한 동, 모델 근거(집단 단위 SHAP — 터전은 모델 입력에 없음) |
+| ③ 터전 지도 | 기본은 **대응(공급 × 필요)** — 동마다 1순위·형평·연결·유지와 도달 효율. 지표를 바꾸면 터전 점수·체류형 점포·경로당 5분위 |
+| ④ 보정 전·후 | 보정 단계별 집단 × 날짜 알림과 헛알림 수. 병원·약국 분리는 같은 세 단계를 다시 잰 다른 축 |
+
+**제출용 캡처(체크리스트 9번)** 는 손으로 찍지 않고 스크립트로 뽑습니다. 창 크기·지도 로딩이 매번 같아 발표자료와 보고서 그림이 어긋나지 않습니다.
+
+```bash
+pip install playwright==1.55.0 && python -m playwright install chromium   # 캡처 전용, requirements에는 넣지 않습니다
+python scripts/capture_screens.py            # → reports/screens/screen1~4.png (1440px, 2배 해상도)
+```
+
+화면 ③ 배경 지도는 인터넷이 있어야 그려집니다. **캡처는 10/17 수치 동결 뒤 한 번 다시 뽑아** 올립니다.
 
 ## 검증 스크립트
 
