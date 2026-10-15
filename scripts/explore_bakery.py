@@ -4,6 +4,8 @@
   1 월별 안정성  60·70·80대 체류 비중이 6개월 내내 같은 성 50대보다 낮은가 (12집단 × 6개월)
   2 원값 순위    60대+ 12칸을 체류 비중 낮은 순으로 세운 순서
   3 나이 보정    36칸 좁아짐 순위 상위 5칸, 60대+ 12칸 안 상위 3칸
+  4 80대 반등    도시·성마다 80대÷70대 체류 비중. 1을 넘으면 재분석이 지운 80대 반등이 되살아난다
+                 (최종 수치표·발표자료의 「강남 남 1.003 · 여 1.002」가 이 표의 「체류에 넣음」 줄이다)
 
 선행: python reanalysis/a0_load_clean.py
 실행: python scripts/explore_bakery.py
@@ -63,6 +65,13 @@ def main() -> None:
             shown = ", ".join(v[key]) if isinstance(v[key], list) else v[key]
             print(f"  {name:10s} {shown}{same}")
         print()
+
+    print("■ 80대÷70대 체류 비중 (1 이상이면 80대 반등)")
+    ratio = pd.DataFrame({name: v["체류 비중"].xs("80대", level="AGE") / v["체류 비중"].xs("70대", level="AGE")
+                          for name, v in res.items()}).T
+    ratio.columns = [f"{c} {s}" for c, s in ratio.columns]
+    print(ratio[["강남 남성", "강남 여성", "춘천 남성", "춘천 여성"]].round(3).to_string())
+    print()
 
     print("■ 체류 비중 변화 (체류에 넣음 − 제외, %p)")
     d = (res["체류에 넣음"]["체류 비중"] - base["체류 비중"]).unstack("AGE")[b0.AGES]

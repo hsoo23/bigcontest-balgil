@@ -67,9 +67,41 @@ def collect() -> list[dict]:
             print(f"[경고] {meta_path.relative_to(ROOT)}: 누락된 항목 {', '.join(missing)}")
         if meta.get("free") is False:
             print(f"[경고] {meta_path.relative_to(ROOT)}: 유료 데이터로 표시되어 있습니다. 사용 시 수상이 취소됩니다.")
-        files = [p for p in sorted(meta_path.parent.iterdir()) if p.name != "meta.json" and p.is_file()]
+        folder = meta_path.parent
+        files = sorted(
+            (p for p in folder.rglob("*") if p.is_file() and p.name != "meta.json"),
+            key=lambda p: p.relative_to(folder).as_posix(),
+        )
         rows.append({"slug": meta_path.parent.name, "meta": meta, "files": files})
     return rows
+
+
+def recorded_files() -> dict[str, list[str]]:
+    """이미 문서에 적혀 있는 원본 파일 줄을 슬러그별로 읽어 둔다.
+
+    100MB가 넘어 git에 올리지 못한 원본(sbiz_store 상가 서울 302MB, sgis_boundary 경계 135MB)은
+    받은 사람의 PC에만 있다. 그 PC가 아닌 곳에서 이 스크립트를 돌리면 폴더에 파일이 없으므로
+    줄이 사라지고, **제출할 수 없는 파일의 유일한 증거인 SHA-256이 같이 지워진다.**
+    그래서 로컬에 없는 파일은 지우지 않고 적혀 있던 줄을 그대로 옮긴다."""
+    if not DOC.exists():
+        return {}
+    text = DOC.read_text(encoding="utf-8")
+    if BEGIN not in text:
+        return {}
+    body = text.partition(BEGIN)[2].partition(END)[0]
+    out: dict[str, list[str]] = {}
+    slug = None
+    for line in body.splitlines():
+        if line.startswith("**`") and line[3:].partition("`")[0]:
+            slug = line[3:].partition("`")[0]
+            out.setdefault(slug, [])
+        elif slug and line.startswith("- `"):
+            out[slug].append(line)
+    return out
+
+
+def _name_of(line: str) -> str:
+    return line[3:].partition("`")[0]
 
 
 def render(rows: list[dict]) -> str:
@@ -83,13 +115,24 @@ def render(rows: list[dict]) -> str:
             f"| `{r['slug']}` | {m.get('name','')} | {m.get('provider','')} | {m.get('reference_date','')} "
             f"| {m.get('spatial_unit','')} | {m.get('collected_at','')} | {m.get('license','')} | {url} |"
         )
+    prev = recorded_files()
     out += ["", "### 원본 파일", ""]
     for r in rows:
         out.append(f"**`{r['slug']}`**" + (f" — {r['meta'].get('note')}" if r["meta"].get("note") else ""))
-        if not r["files"]:
-            out.append("- (원본 파일 없음)")
+        folder = EXTERNAL_DIR / r["slug"]
+        lines, here = [], set()
         for path in r["files"]:
-            out.append(f"- `{path.name}` — {path.stat().st_size / 1e6:.1f} MB, SHA-256 `{sha256(path)[:16]}…`")
+            name = path.relative_to(folder).as_posix()
+            here.add(name)
+            lines.append(f"- `{name}` — {path.stat().st_size / 1e6:.1f} MB, SHA-256 `{sha256(path)[:16]}…`")
+        kept = [ln for ln in prev.get(r["slug"], []) if _name_of(ln) not in here]
+        for ln in kept:
+            suffix = " · **이 PC에 없음 — 기록만 유지**"
+            out_line = ln if ln.endswith(suffix) else ln + suffix
+            lines.append(out_line)
+        if not lines:
+            out.append("- (원본 파일 없음)")
+        out += lines
         out.append("")
     return "\n".join(out)
 
