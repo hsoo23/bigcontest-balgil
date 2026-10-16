@@ -433,6 +433,8 @@ def counterpart_industries(inp: Inputs, city: str, sex: str, age: str, n: int = 
     if inp.industry is None:
         return None
     g = inp.industry[(inp.industry["city"] == city) & (inp.industry["sex"] == sex) & (inp.industry["AGE"] == age)]
+    if g.empty:  # 「남」처럼 표기가 틀리면 빈 표가 되어 0곳으로 읽힌다 — 양·질(_row)처럼 멈춘다(#49 현수)
+        raise KeyError(f"상대방 업종 표에 없는 집단: {city} {sex} {age} (성은 남성/여성, 연령은 60대/70대/80대)")
     g = g[g["비중"] >= COUNTERPART_SHARE_MIN]
     top = g.nlargest(n - 1, "비중")
     rest = g.drop(top.index)
@@ -458,10 +460,10 @@ def find_counterpart(inp: Inputs, city: str, sex: str, age: str, adm_cd: str | N
     return ind
 
 
-SHOP_PER_CENTER = 3  # 상대방 업종 가게가 경로당의 3배가 안 되는 동은 경로당을 먼저 (10/17 확정 전 초안)
+SHOP_PER_CENTER = 3  # 상대방 업종 가게가 경로당의 3배가 안 되는 동은 경로당을 먼저. #49에서 3배로 정함(판단값, 민감도는 06절 6.4)
 
 
-def counterpart_kind(inp: Inputs, city: str, sex: str, age: str, adm_cd: str) -> dict:
+def counterpart_kind(inp: Inputs, city: str, sex: str, age: str, adm_cd: str, mult: int | None = None) -> dict:
     """그 대상자에게 먼저 물을 창구: 가게인가 경로당·마을회관인가 (#6, #26).
     춘천 면 지역은 가게가 적고 60세+ 천 명당 경로당이 많다(60세+ 천 명당 체류형 점포 × 경로당·마을회관, 춘천 −0.79, n=25;
     강남 0.03. 분석결과 4.7, C3 #30. 수치는 10/17 수치표). 단골 가게를 전제하면 터전점수가 낮아
@@ -469,12 +471,15 @@ def counterpart_kind(inp: Inputs, city: str, sex: str, age: str, adm_cd: str) ->
     가게 수나 경로당 수를 모르면 가게로 둔다(기획안 4절 기본값).
     데이터가 주는 것은 후보 위치까지다. 실제로 다니던 곳·연락 경로는 본인 등록(D2)으로만 받는다(07_에이전트 7.5)."""
     ind = find_counterpart(inp, city, sex, age, adm_cd)
-    shops = int(ind["점포수"].sum()) if ind is not None and "점포수" in ind else None
+    # 업종 표가 비면 「0곳」이 아니라 「모른다」다 — 0으로 세면 어느 동이든 경로당 먼저가 된다(#49 현수)
+    known = ind is not None and not ind.empty and "점포수" in ind
+    shops = int(ind["점포수"].sum()) if known else None
     centers = None
     if inp.facilities is not None:
         f = inp.facilities[inp.facilities["ADM_CD"].astype(str) == str(adm_cd)]
         centers = int(f["경로당수"].iloc[0]) if len(f) else None
-    first = "경로당·마을회관" if shops is not None and centers and shops < SHOP_PER_CENTER * centers else "가게"
+    m = SHOP_PER_CENTER if mult is None else mult  # mult는 배수 민감도용(build_priority.py). 평소에는 비워 둔다
+    first = "경로당·마을회관" if shops is not None and centers and shops < m * centers else "가게"
     return {"창구": first, "가게후보": shops, "경로당": centers, "업종": ind}
 
 

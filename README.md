@@ -43,7 +43,7 @@ pip install -r requirements.txt
 
 제공 데이터(`data/raw/`)와 정제 산출물(`data/processed/`)은 git에 올리지 않습니다. 제공 데이터는 대회가 준 것이라 재배포 범위가 불분명하고 용량도 큽니다. 각자 아래처럼 배치합니다.
 
-외부 원본(`data/external/`)과 팀 공용 기준표(`data/reference/`)는 git에 올립니다 — 규정이 **활용한 원본 파일 제출**을 요구하고, 셋이 같은 파일을 쓰지 않으면 조회 조건이 조금만 달라도 수치가 어긋나기 때문입니다. 다만 **100MB를 넘는 원본은 `meta.json`(출처·받는 법)만** 올립니다(아래 외부 데이터 참고).
+외부 원본(`data/external/`)과 팀 공용 기준표(`data/reference/`), 페르소나 가상 데이터(`data/synthetic/`, 파일명에 「가상」)는 git에 올립니다 — 규정이 **활용한 원본 파일 제출**을 요구하고, 셋이 같은 파일을 쓰지 않으면 조회 조건이 조금만 달라도 수치가 어긋나기 때문입니다. 다만 **100MB를 넘는 원본은 `meta.json`(출처·받는 법)만** 올립니다(아래 외부 데이터 참고).
 
 ```
 data/raw/card/신한카드_빅콘테스트2026_데이터1.txt        # 일자 × 6시간대
@@ -83,6 +83,7 @@ python scripts/build_weather.py       # ASOS 일자 × 시군구 기상 테이�
 python scripts/explore_weather.py     # 기상 결합표 → data/reference/weather_daily.csv, 끊김·예상과 대조 (B4, git에 올림)
 python scripts/build_priority.py      # 동 우선순위표·도달 효율 → data/reference/dong_priority.csv, reach_efficiency.csv (C5, git에 올림)
 python scripts/build_features.py      # 지표 산출
+python scripts/build_synthetic.py     # 페르소나 가상 명부 41명·장소 표 → data/synthetic/*_가상.csv (D4, git에 올림. 생성 방식은 E5)
 ```
 
 정제 규칙은 `src/balgil/data.py`, 지표 정의는 `src/balgil/features.py`에 모여 있습니다.
@@ -93,11 +94,27 @@ python scripts/build_features.py      # 지표 산출
 
 ```bash
 pip install -r app/requirements-app.txt     # 분석 고정 버전 + streamlit·folium
-streamlit run app/balgil_app.py             # 탭 4개: 주간 브리핑 · 발길 상세 · 지도 · 보정 전·후
+streamlit run app/balgil_app.py             # 탭 4개: 주간 브리핑 · 발길 상세 · 터전 지도 · 보정 전·후
 # http://localhost:8501/?screen=3 처럼 붙이면 그 화면만 (캡처·데모용)
 ```
 
-화면은 git에 있는 파일만 읽어서 **원본 데이터 없이도 뜹니다** — `reanalysis/reference/`(재분석 결과)와 `data/reference/app/`(지도·시설·SHAP, 화면 ①의 `agent.py` 주간 표). 원본이 바뀌면 `python scripts/build_app_data.py`로 다시 만듭니다.
+화면은 git에 있는 파일만 읽어서 **원본 데이터 없이도 뜹니다** — `reanalysis/reference/`(재분석 결과), `data/reference/app/`(지도·시설·SHAP, 화면 ①의 `agent.py` 주간 표 — 대상자 표는 가상 명부로 만든 것), `data/reference/dong_priority.csv`·`reach_efficiency.csv`(화면 ③ 공급 × 필요, C5). 원본이 바뀌면 `python scripts/build_app_data.py`로 다시 만듭니다.
+
+| 화면 | 무엇을 보나 |
+|---|---|
+| ① 주간 브리핑 | 60대 이상 12집단의 이번 주 신호(빨강·주황·노랑·초록)와 다음 행동, 끊긴 칸에서 먼저 확인할 사람(**가상 명부**)과 창구, 상태별 자원 후보. 기본값은 시연 기준일 주 |
+| ② 발길 상세 | 한 집단의 양·질·연속성 추이, 그 시군구의 터전 약한 동, 모델 근거(집단 단위 SHAP — 터전은 모델 입력에 없음) |
+| ③ 터전 지도 | 기본은 **대응(공급 × 필요)** — 동마다 1순위·형평·연결·유지와 도달 효율. 지표를 바꾸면 터전 점수·체류형 점포·경로당 5분위 |
+| ④ 보정 전·후 | 보정 단계별 집단 × 날짜 알림과 헛알림 수. 병원·약국 분리는 같은 세 단계를 다시 잰 다른 축 |
+
+**제출용 캡처(체크리스트 9번)** 는 손으로 찍지 않고 스크립트로 뽑습니다. 창 크기·지도 로딩이 매번 같아 발표자료와 보고서 그림이 어긋나지 않습니다.
+
+```bash
+pip install playwright==1.55.0 && python -m playwright install chromium   # 캡처 전용, requirements에는 넣지 않습니다
+python scripts/capture_screens.py            # → reports/screens/screen1~4.png (1440px, 2배 해상도)
+```
+
+화면 ③ 배경 지도는 인터넷이 있어야 그려집니다. **캡처는 10/17 수치 동결 뒤 한 번 다시 뽑아** 올립니다.
 
 ## 검증 스크립트
 
