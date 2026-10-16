@@ -91,6 +91,14 @@ def loose(tok: str) -> str:
     return re.sub(r"[−\-,\sρ=]", "", tok)
 
 
+def show(path: Path) -> str:
+    """저장소 안이면 상대경로, 밖이면 그대로. --files 로 바깥 파일을 줄 수 있다."""
+    try:
+        return str(path.relative_to(ROOT))
+    except ValueError:
+        return str(path)
+
+
 def in_table(tok: str, text: str, text_loose: str) -> bool:
     """수치표에 그 값이 있는가. 앞뒤가 숫자·소수점이면 더 긴 수의 일부이므로 안 센다.
 
@@ -122,7 +130,7 @@ def main() -> None:
         missing = [t for t in found if not in_table(t, table_text, table_loose)]
         if not missing and not a.show_ok:
             continue
-        print(f"\n■ {f.relative_to(ROOT)}  (숫자 {len(found)}개 · 수치표에 없음 {len(missing)}개)")
+        print(f"\n■ {show(f)}  (숫자 {len(found)}개 · 수치표에 없음 {len(missing)}개)")
         for t in missing:
             print(f"    없음  {t}")
         if a.show_ok:
