@@ -11,7 +11,8 @@ LLM은 부르지 않는다. 문장은 고정 틀에 계산값을 슬롯으로 �
   rate_state                          네 상태 판정
   match_roster                        명부 교차    ← 가상 명부 (입력 형식: docs/agent_입력형식.md)
   find_counterpart                    상대방 업종·동 점포 수 ← segment_industry · dong_industry_stores
-                                      (scripts/build_segment_industry.py). D4 장소 표가 오면 장소까지
+                                      (scripts/build_segment_industry.py)
+  place_candidates                    실제 장소: 본인 등록 장소, 없으면 그 동의 지정 가게·경로당 ← D4 장소 표 (--places)
   counterpart_kind                    먼저 물을 창구(가게 / 경로당·마을회관) ← 위 + fac_dong (build_facility.py)
   match_resource                      상태별 자원 후보 ← res_welfare_central · res_welfare_local · res_volunteer_target
                                       (scripts/fetch_welfare_api.py). 거리 → 반복성 → 대면성 순 (기획안 6절)
@@ -466,8 +467,9 @@ SHOP_PER_CENTER = 3  # 상대방 업종 가게가 경로당의 3배가 안 되�
 def counterpart_kind(inp: Inputs, city: str, sex: str, age: str, adm_cd: str, mult: int | None = None) -> dict:
     """그 대상자에게 먼저 물을 창구: 가게인가 경로당·마을회관인가 (#6, #26).
     춘천 면 지역은 가게가 적고 60세+ 천 명당 경로당이 많다(60세+ 천 명당 체류형 점포 × 경로당·마을회관, 춘천 −0.79, n=25;
-    강남 0.03. 분석결과 4.7, C3 #30. 수치는 10/17 수치표). 단골 가게를 전제하면 터전점수가 낮아
+    강남 0.03. 분석결과 4.7, C3 #30. 수치는 최종수치표 6-2). 단골 가게를 전제하면 터전점수가 낮아
     확인 창구가 가장 필요한 동에서 2단계가 빈다. 그 동의 상대방 업종 가게 수와 경로당·마을회관 수를 견줘 고른다.
+    지역 유형(면 지역)이 아니라 그 동의 공급 구성으로 고르므로 강남 개포1동·일원본동도 경로당 쪽이 된다(#45, 10절).
     가게 수나 경로당 수를 모르면 가게로 둔다(기획안 4절 기본값).
     데이터가 주는 것은 후보 위치까지다. 실제로 다니던 곳·연락 경로는 본인 등록(D2)으로만 받는다(07_에이전트 7.5)."""
     ind = find_counterpart(inp, city, sex, age, adm_cd)
@@ -481,6 +483,47 @@ def counterpart_kind(inp: Inputs, city: str, sex: str, age: str, adm_cd: str, mu
     m = SHOP_PER_CENTER if mult is None else mult  # mult는 배수 민감도용(build_priority.py). 평소에는 비워 둔다
     first = "경로당·마을회관" if shops is not None and centers and shops < m * centers else "가게"
     return {"창구": first, "가게후보": shops, "경로당": centers, "업종": ind}
+
+
+PLACE_TOP = 4  # 2단계 장소 후보 수 (기획안 4절 「후보 3~4곳으로 줄인다」, 9절 교동 「한식 2 · 미용 1 · 약국 1」)
+
+
+def place_candidates(places: pd.DataFrame, adm_cd: str, kind: str, industries: list[str],
+                     registered: str | None = None, n: int = PLACE_TOP) -> dict:
+    """2단계에서 물을 실제 장소 (D4 장소 표, 기획안 4절 ③).
+    본인이 등록한 곳(등록장소ID)이 있으면 그곳이 1순위다 — 개인 연결의 유일한 경로가 본인 등록이다(7.5).
+    없으면 대상자 동에서 고른 창구 쪽 장소를 n곳까지: 가게면 그 집단의 상대방 업종 중 게이트키퍼 지정 가게,
+    경로당·마을회관이면 그 동의 시설. 이름은 화면에만 쓰고 문의 문구에는 넣지 않는다(문구는 기관명만 슬롯)."""
+    reg_row = None
+    note = ""
+    if registered:
+        hit = places[places["장소ID"] == registered]
+        if len(hit):
+            reg_row = hit.iloc[0]
+        else:
+            note = f"등록장소 {registered}가 장소 표에 없음"
+    p = places[(places["행정동코드"] == str(adm_cd)) & (places["장소ID"] != registered)]
+    if kind == "가게":
+        order = {u: i for i, u in enumerate(industries)}
+        p = p[(p["종류"] == "가게") & p["업종"].isin(order) & (p["게이트키퍼"] == "Y")]
+        p = p.assign(_o=p["업종"].map(order)).sort_values(["_o", "장소ID"])
+    else:
+        p = p[p["종류"].isin(["경로당", "마을회관"])].sort_values("장소ID")
+    return {"등록": reg_row, "후보": p.head(n), "메모": note}
+
+
+def _place_label(r) -> str:
+    tag = r["업종"] if r["종류"] == "가게" else r["종류"]
+    return f"{r['이름']} ({tag}{' · 지정' if r['게이트키퍼'] == 'Y' else ''})"
+
+
+def _place_text(c: dict) -> tuple[str, str]:
+    """(등록장소, 후보장소) 두 칸. 후보가 없으면 그 사실을 적는다 — 빈칸으로 두면 「모른다」와 「없다」가 섞인다."""
+    reg = _place_label(c["등록"]) if c["등록"] is not None else ""
+    cand = " · ".join(_place_label(r) for _, r in c["후보"].iterrows()) or "그 동에 해당 장소 없음"
+    if c["메모"]:  # 등록 ID가 장소 표에 없으면 후보로 내려가되, 그 사실을 앞에 적는다
+        cand = f"({c['메모']}) {cand}"
+    return reg, cand
 
 
 # 문의 문구: 개인정보·"고립 의심" 같은 말 없이 안부 확인으로 연다(기획안 9절). 기관명만 슬롯
@@ -580,7 +623,10 @@ def draft_outreach(st: State, people: pd.DataFrame | None = None, vol_date: str 
     if people is not None and len(people):
         days = " · ".join(f"{d}일" for d in people["경과일"])
         lines.append(f"〈명부〉 이 칸에 드는 대상자 {int(people['칸_인원'].iloc[0])}명 중 마지막 접촉이 가장 오래된 {len(people)}명 ({days}).")
-        lines += [f"  - {r.대상자ID}: 접촉 {r.경과일}일 전 · 〈터전〉 {r.터전} · 〈물어볼 곳〉 {r.물어볼곳}" for r in people.itertuples()]
+        for r in people.itertuples():
+            lines.append(f"  - {r.대상자ID}: 접촉 {r.경과일}일 전 · 〈터전〉 {r.터전} · 〈물어볼 곳〉 {r.물어볼곳}")
+            if "등록장소" in people:  # D4 장소 표를 넣었을 때만
+                lines.append(f"      〈본인 등록〉 {r.등록장소}" if r.등록장소 else f"      〈후보 장소〉 {r.후보장소}")
         if st.상태.startswith("끊김"):
             lines += [f"〈문의 문구 · {k}〉 \"{inquiry_script(k)}\"" for k in dict.fromkeys(people["창구"])]
     elif people is not None:  # 명부는 넣었는데 이 칸에 (이 기준일까지 기록이 있는) 사람이 없다 — 조용히 넘기지 않는다
@@ -609,8 +655,10 @@ class Week:
     people: dict            # 집단 이름 → 명부 교차 결과 (끊긴 칸만)
 
 
-def run_week(inp: Inputs, as_of: pd.Timestamp, roster: pd.DataFrame | None = None, top_n: int = 3) -> Week:
-    """끊김 루프(주 1회) 한 번: 60·70·80대 12집단 판정 → 동시 끊김 표시 → 끊긴 칸만 상대방 업종·명부 교차."""
+def run_week(inp: Inputs, as_of: pd.Timestamp, roster: pd.DataFrame | None = None, top_n: int = 3,
+             places: pd.DataFrame | None = None) -> Week:
+    """끊김 루프(주 1회) 한 번: 60·70·80대 12집단 판정 → 동시 끊김 표시 → 끊긴 칸만 상대방 업종·명부 교차.
+    장소 표(D4)를 주면 대상자마다 본인 등록 장소 또는 그 동의 후보 장소를 붙인다(place_candidates)."""
     states = [rate_state(inp, c, s, a, as_of) for c in CITY_SGG for s in ["남성", "여성"] for a in BREAK_AGES]
     broken = [st for st in states if st.상태.startswith("끊김")]
     for st in states:
@@ -638,13 +686,21 @@ def run_week(inp: Inputs, as_of: pd.Timestamp, roster: pd.DataFrame | None = Non
         kinds = [counterpart_kind(inp, city, sex, age, cd) for cd in pp["행정동코드"]]
         pp["창구"] = [k["창구"] for k in kinds]
         pp["물어볼곳"] = [_window_text(k) for k in kinds]
+        if places is not None:
+            inds = list(st.근거["상대방"]["업종"]) if st.근거["상대방"] is not None else []
+            regs = pp["등록장소ID"] if "등록장소ID" in pp else pd.Series([None] * len(pp), index=pp.index)
+            texts = [_place_text(place_candidates(places, cd, k["창구"], inds, rg if isinstance(rg, str) and rg else None))
+                     for cd, k, rg in zip(pp["행정동코드"], kinds, regs)]
+            pp["등록장소"] = [t[0] for t in texts]
+            pp["후보장소"] = [t[1] for t in texts]
         people[st.집단] = pp
     return Week(as_of, states, people)
 
 
-def weekly_briefing(inp: Inputs, as_of: pd.Timestamp, roster: pd.DataFrame | None = None, top_n: int = 3) -> str:
+def weekly_briefing(inp: Inputs, as_of: pd.Timestamp, roster: pd.DataFrame | None = None, top_n: int = 3,
+                    places: pd.DataFrame | None = None) -> str:
     """끊김 루프 한 번을 담당자용 글로 낸다. 같은 내용의 표는 briefing_tables."""
-    wk = run_week(inp, as_of, roster, top_n)
+    wk = run_week(inp, as_of, roster, top_n, places)
     broken = sorted([st for st in wk.states if st.상태.startswith("끊김")], key=lambda st: st.상태 != "끊김(빨강)")
     blocks = [draft_outreach(st, wk.people.get(st.집단), inp.volunteer_date) for st in broken]
     narrow, ground = narrow_cells(inp), ground_alerts(inp)
@@ -667,10 +723,12 @@ def weekly_briefing(inp: Inputs, as_of: pd.Timestamp, roster: pd.DataFrame | Non
     return "\n".join(head + ["\n\n".join(blocks) if blocks else "이번 주 끊김 없음."] + tail)
 
 
-def briefing_tables(inp: Inputs, as_of: pd.Timestamp, roster: pd.DataFrame | None = None, top_n: int = 3) -> dict[str, pd.DataFrame]:
+def briefing_tables(inp: Inputs, as_of: pd.Timestamp, roster: pd.DataFrame | None = None, top_n: int = 3,
+                    places: pd.DataFrame | None = None) -> dict[str, pd.DataFrame]:
     """D3 화면이 읽는 표 넷. ① 주간 브리핑 = 요약·집단·대상자, ③ 지도 = 터전.
-    카드 지표는 집단 표에만 있고 동 표에는 없다(실행계획 2절)."""
-    wk = run_week(inp, as_of, roster, top_n)
+    카드 지표는 집단 표에만 있고 동 표에는 없다(실행계획 2절).
+    장소 표를 주면 대상자 표에 등록장소·후보장소 두 열이 붙는다(없으면 열 자체가 없다 — 기존 화면은 그대로)."""
+    wk = run_week(inp, as_of, roster, top_n, places)
     prev = run_week(inp, as_of - pd.Timedelta(days=WINDOW_DAYS))
     rows = []
     for st in wk.states:
@@ -703,9 +761,10 @@ def briefing_tables(inp: Inputs, as_of: pd.Timestamp, roster: pd.DataFrame | Non
         "경보일_보정없음": int(alarms["경보_보정없음"]), "경보일_계절보정": int(alarms["경보_계절보정"]),
         "경보일_공통충격보정": int(alarms["경보_공통충격보정"]),
     }])
-    people = (pd.concat([p.assign(집단=k) for k, p in wk.people.items()], ignore_index=True)
-              [["집단", "대상자ID", "명부종류", "경과일", "행정동코드", "행정동", "터전순위", "창구", "물어볼곳"]]
-              if wk.people else pd.DataFrame(columns=["집단", "대상자ID", "명부종류", "경과일", "행정동코드", "행정동", "터전순위", "창구", "물어볼곳"]))
+    cols = ["집단", "대상자ID", "명부종류", "경과일", "행정동코드", "행정동", "터전순위", "창구", "물어볼곳"]
+    cols += ["등록장소", "후보장소"] if places is not None else []
+    people = (pd.concat([p.assign(집단=k) for k, p in wk.people.items()], ignore_index=True).reindex(columns=cols)
+              if wk.people else pd.DataFrame(columns=cols))
     people = people.astype({"경과일": "Int64", "터전순위": "Int64"})
     ground = inp.dong[["도시", "ADM_CD", "ADM_NM", "터전점수_통신", "터전순위_통신"]].copy()
     ground["터전없음후보"] = ground["ADM_CD"].isin(ground_alerts(inp)["ADM_CD"])
@@ -717,20 +776,22 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="발길 에이전트 주간 브리핑 (D1 뼈대)")
     ap.add_argument("--as-of", default=None, help="기준일 YYYY-MM-DD (기본: 끊김 자료의 마지막 날)")
     ap.add_argument("--roster", type=Path, default=None, help="가상 명부 CSV (docs/agent_입력형식.md)")
-    ap.add_argument("--places", type=Path, default=None, help="발길이 닿던 곳 CSV (D4). 지금은 형식 검사만, 브리핑 연결은 10/18–20")
+    ap.add_argument("--places", type=Path, default=None,
+                    help="발길이 닿던 곳 CSV (D4). 대상자마다 본인 등록 장소 또는 그 동의 후보 장소를 붙인다")
     ap.add_argument("--top", type=int, default=3, help="끊긴 칸마다 올릴 대상자 수 (기획안 4절 상위 N명)")
     ap.add_argument("--out", type=Path, default=None, help="D3 화면용 표를 쓸 폴더 (예: data/processed/agent)")
     a = ap.parse_args()
     inp = load_inputs()
     as_of = pd.Timestamp(a.as_of) if a.as_of else inp.breaks["date"].max()
     roster = read_roster(a.roster, inp, as_of) if a.roster else None
+    places = None
     if a.places:
         places = read_places(a.places, inp)
         print(f"장소 표 검사 통과: {len(places)}곳 ({places['종류'].value_counts().to_dict()})\n")
-    print(weekly_briefing(inp, as_of, roster, a.top))
+    print(weekly_briefing(inp, as_of, roster, a.top, places))
     if a.out:
         a.out.mkdir(parents=True, exist_ok=True)
-        for name, df in briefing_tables(inp, as_of, roster, a.top).items():
+        for name, df in briefing_tables(inp, as_of, roster, a.top, places).items():
             df.to_csv(a.out / f"{name}.csv", index=False, encoding="utf-8-sig", lineterminator="\n")
         print(f"\n표 저장: {a.out} (agent_summary · agent_groups · agent_people · agent_ground)")
     print("\n입력: " + ", ".join(f"{k}={Path(v).relative_to(ROOT)}" for k, v in inp.sources.items()))
