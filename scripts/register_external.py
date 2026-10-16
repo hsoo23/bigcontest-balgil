@@ -13,6 +13,8 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
+import subprocess
 import sys
 from datetime import date
 from pathlib import Path
@@ -82,7 +84,11 @@ def recorded_files() -> dict[str, list[str]]:
     100MB가 넘어 git에 올리지 못한 원본(sbiz_store 상가 서울 302MB, sgis_boundary 경계 135MB)은
     받은 사람의 PC에만 있다. 그 PC가 아닌 곳에서 이 스크립트를 돌리면 폴더에 파일이 없으므로
     줄이 사라지고, **제출할 수 없는 파일의 유일한 증거인 SHA-256이 같이 지워진다.**
-    그래서 로컬에 없는 파일은 지우지 않고 적혀 있던 줄을 그대로 옮긴다."""
+    그래서 로컬에 없는 파일은 지우지 않고 적혀 있던 줄을 그대로 옮긴다.
+
+    옮긴 줄은 실행할 때 [유지]로 찍는다. 폴더에서 정말로 지운 파일도 이 규칙 때문에 남으므로,
+    그때는 문서에서 그 줄을 손으로 지운다 — 자동으로 지우면 원본이 없는 PC에서 한 번 돌리는
+    것만으로 기록이 날아간다."""
     if not DOC.exists():
         return {}
     text = DOC.read_text(encoding="utf-8")
@@ -104,6 +110,50 @@ def _name_of(line: str) -> str:
     return line[3:].partition("`")[0]
 
 
+GIT_LIMIT_MB = 100  # GitHub가 막는 크기. 이보다 큰 원본은 meta.json만 올린다
+
+# git에 없는 파일에 붙이는 꼬리표. 앞의 것은 옛 표기이고, 읽을 때 떼어 내 다시 붙인다
+# (문구를 바꿀 때 이 목록에 옛 문구를 남겨 두면 한 번 돌려 전부 새 문구로 바뀐다).
+TAILS = (
+    " · **이 PC에 없음 — 기록만 유지**",              # 옛 표기 (환경에 딸려 있었다)
+    " · **저장소에 없음 — 수집 방법은 위 note**",      # 옛 표기
+    f" · **git 미포함 ({GIT_LIMIT_MB}MB 초과) — 해시로 대조**",
+    " · **git 미포함 — 수집 방법은 위 note**",
+)
+BIG_TAIL, SMALL_TAIL = TAILS[-2], TAILS[-1]
+
+
+def tracked() -> set[str] | None:
+    """git이 들고 있는 data/external 파일 경로. 꼬리표의 기준을 **저장소 상태**로 둔다.
+
+    로컬에 파일이 있느냐로 정하면 원본을 가진 PC와 없는 PC에서 돌릴 때마다 같은 여덟 줄이
+    diff로 오간다(현수 #39 리뷰). git에 있느냐는 누가 돌려도 같은 답이라 그 오감이 멈춘다.
+    아직 add하지 않은 파일은 「git 미포함」으로 나오는데 그 순간에는 사실이고, 커밋한 뒤
+    다시 돌리면 꼬리표가 떨어진다. git을 쓸 수 없으면 None을 돌려 예전처럼 로컬 유무로 둔다."""
+    try:
+        out = subprocess.run(["git", "ls-files", "-z", "--", str(EXTERNAL_DIR.relative_to(ROOT))],
+                             cwd=ROOT, capture_output=True, check=True).stdout
+    except (OSError, subprocess.CalledProcessError):
+        print("[경고] git ls-files를 쓸 수 없어 꼬리표를 로컬 파일 유무로 정합니다")
+        return None
+    return {n for n in out.decode("utf-8").split(chr(0)) if n}
+
+
+def _strip_tail(line: str) -> str:
+    for t in TAILS:
+        if line.endswith(t):
+            return line[: -len(t)]
+    return line
+
+
+def _absent_tail(line: str) -> str:
+    """git에 없는 파일의 꼬리표를 **적혀 있는 크기에서** 고른다. 「이 PC」는 제출물을 읽는
+    사람에게 뜻이 없는 말이므로, 왜 없는지(100MB 초과인지)를 적는다."""
+    m = re.search(r"—\s*([0-9.]+)\s*MB", line)
+    big = m and float(m.group(1)) > GIT_LIMIT_MB
+    return BIG_TAIL if big else SMALL_TAIL
+
+
 def render(rows: list[dict]) -> str:
     if not rows:
         return "아직 등록된 외부 데이터가 없습니다. `python scripts/register_external.py --init <슬러그>`로 시작하세요."
@@ -115,7 +165,7 @@ def render(rows: list[dict]) -> str:
             f"| `{r['slug']}` | {m.get('name','')} | {m.get('provider','')} | {m.get('reference_date','')} "
             f"| {m.get('spatial_unit','')} | {m.get('collected_at','')} | {m.get('license','')} | {url} |"
         )
-    prev = recorded_files()
+    prev, in_git = recorded_files(), tracked()
     out += ["", "### 원본 파일", ""]
     for r in rows:
         out.append(f"**`{r['slug']}`**" + (f" — {r['meta'].get('note')}" if r["meta"].get("note") else ""))
@@ -124,12 +174,17 @@ def render(rows: list[dict]) -> str:
         for path in r["files"]:
             name = path.relative_to(folder).as_posix()
             here.add(name)
-            lines.append(f"- `{name}` — {path.stat().st_size / 1e6:.1f} MB, SHA-256 `{sha256(path)[:16]}…`")
-        kept = [ln for ln in prev.get(r["slug"], []) if _name_of(ln) not in here]
+            ln = f"- `{name}` — {path.stat().st_size / 1e6:.1f} MB, SHA-256 `{sha256(path)[:16]}…`"
+            # 로컬에는 있지만 git에는 없는 원본(100MB 초과)도 같은 꼬리표를 받는다 — 그래야
+            # 원본을 가진 PC와 없는 PC의 결과가 같아진다
+            rel = path.relative_to(ROOT).as_posix()
+            lines.append(ln if in_git is None or rel in in_git else ln + _absent_tail(ln))
+        kept = [_strip_tail(ln) for ln in prev.get(r["slug"], []) if _name_of(ln) not in here]
         for ln in kept:
-            suffix = " · **이 PC에 없음 — 기록만 유지**"
-            out_line = ln if ln.endswith(suffix) else ln + suffix
-            lines.append(out_line)
+            lines.append(ln + _absent_tail(ln))
+        if kept:
+            print(f"[유지] {r['slug']}: 로컬에 없어 기록만 옮긴 파일 {len(kept)}개 — "
+                  + ", ".join(_name_of(ln) for ln in kept))
         if not lines:
             out.append("- (원본 파일 없음)")
         out += lines
