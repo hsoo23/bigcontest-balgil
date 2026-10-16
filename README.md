@@ -43,7 +43,7 @@ pip install -r requirements.txt
 
 제공 데이터(`data/raw/`)와 정제 산출물(`data/processed/`)은 git에 올리지 않습니다. 제공 데이터는 대회가 준 것이라 재배포 범위가 불분명하고 용량도 큽니다. 각자 아래처럼 배치합니다.
 
-외부 원본(`data/external/`)과 팀 공용 기준표(`data/reference/`)는 git에 올립니다 — 규정이 **활용한 원본 파일 제출**을 요구하고, 셋이 같은 파일을 쓰지 않으면 조회 조건이 조금만 달라도 수치가 어긋나기 때문입니다. 다만 **100MB를 넘는 원본은 `meta.json`(출처·받는 법)만** 올립니다(아래 외부 데이터 참고).
+외부 원본(`data/external/`)과 팀 공용 기준표(`data/reference/`), 페르소나 가상 데이터(`data/synthetic/`, 파일명에 「가상」)는 git에 올립니다 — 규정이 **활용한 원본 파일 제출**을 요구하고, 셋이 같은 파일을 쓰지 않으면 조회 조건이 조금만 달라도 수치가 어긋나기 때문입니다. 다만 **100MB를 넘는 원본은 `meta.json`(출처·받는 법)만** 올립니다(아래 외부 데이터 참고).
 
 ```
 data/raw/card/신한카드_빅콘테스트2026_데이터1.txt        # 일자 × 6시간대
@@ -83,6 +83,7 @@ python scripts/build_weather.py       # ASOS 일자 × 시군구 기상 테이�
 python scripts/explore_weather.py     # 기상 결합표 → data/reference/weather_daily.csv, 끊김·예상과 대조 (B4, git에 올림)
 python scripts/build_priority.py      # 동 우선순위표·도달 효율 → data/reference/dong_priority.csv, reach_efficiency.csv (C5, git에 올림)
 python scripts/build_features.py      # 지표 산출
+python scripts/build_synthetic.py     # 페르소나 가상 명부 41명·장소 표 → data/synthetic/*_가상.csv (D4, git에 올림. 생성 방식은 E5)
 ```
 
 정제 규칙은 `src/balgil/data.py`, 지표 정의는 `src/balgil/features.py`에 모여 있습니다.
@@ -97,7 +98,7 @@ streamlit run app/balgil_app.py             # 탭 4개: 주간 브리핑 · 발�
 # http://localhost:8501/?screen=3 처럼 붙이면 그 화면만 (캡처·데모용)
 ```
 
-화면은 git에 있는 파일만 읽어서 **원본 데이터 없이도 뜹니다** — `reanalysis/reference/`(재분석 결과)와 `data/reference/app/`(지도·시설·SHAP, 화면 ①의 `agent.py` 주간 표). 원본이 바뀌면 `python scripts/build_app_data.py`로 다시 만듭니다.
+화면은 git에 있는 파일만 읽어서 **원본 데이터 없이도 뜹니다** — `reanalysis/reference/`(재분석 결과)와 `data/reference/app/`(지도·시설·SHAP, 화면 ①의 `agent.py` 주간 표 — 대상자 표는 가상 명부로 만든 것). 원본이 바뀌면 `python scripts/build_app_data.py`로 다시 만듭니다.
 
 ## 검증 스크립트
 

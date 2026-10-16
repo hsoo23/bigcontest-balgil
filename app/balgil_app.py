@@ -5,7 +5,7 @@
 
 읽는 파일은 모두 git에 있다 — 원본 데이터가 없어도 뜬다.
   reanalysis/reference/   재분석 결과 (끊김·보정·주간 패널)
-  data/reference/app/     scripts/build_app_data.py가 만든 지도·시설·SHAP, 화면 ①의 agent.py 표
+  data/reference/app/     scripts/build_app_data.py가 만든 지도·시설·SHAP, 화면 ①의 agent.py 표(대상자 표는 가상 명부)
 
 원칙
   * 집단 지표(양·질·연속성)는 시군구 × 성 × 연령까지만. 동 단위로 보여 주는 것은 터전뿐이다.
@@ -104,7 +104,17 @@ def load_agent() -> tuple[pd.DataFrame, pd.DataFrame]:
     groups["상대방업종"] = groups["상대방업종"].fillna("")
     if "궂은날" in groups:  # agent.py 날씨 꼬리표(#31 수경). 표를 그 뒤에 다시 만들어야 열이 생긴다
         groups["궂은날"] = groups["궂은날"].fillna("")
+    for c in ("다음행동", "자원후보"):  # agent.py next_step·match_resource(#44 수경). 표를 그 뒤에 다시 만들어야 열이 생긴다
+        if c in groups:
+            groups[c] = groups[c].fillna("")
     return summ, groups
+
+
+@st.cache_data
+def load_people() -> pd.DataFrame | None:
+    """확인 권고 대상자 × 주. 가상 명부(D4, data/synthetic/roster_가상.csv)를 넣어 돌린 agent.py 표다."""
+    path = APP / "agent_people.csv"
+    return pd.read_csv(path, parse_dates=["기준일"], dtype={"행정동코드": str}) if path.exists() else None
 
 
 @st.cache_data
@@ -148,7 +158,7 @@ SIGNAL = {
     "초록": ("초록 · 평온", CALM),
 }
 SIGNAL_ORDER = {"빨강": 0, "주황": 1, "노랑": 2, "초록": 3}
-DEMO_AS_OF = "2025-10-05"  # 시연 기준일 10/01이 든 주(#6 수경 안). 10/17 회의에서 정한 날로 바꾼다
+DEMO_AS_OF = "2025-10-12"  # 시연 주 10/06~10/12 (#49 2번). 보조 장면 10/01 주황은 10/05 주
 
 
 def next_action(r: pd.Series, n_same: int) -> str:
@@ -181,8 +191,11 @@ def screen_briefing():
     c[1].markdown(ui.stat("빨강 · 필수형 끊김", f"{int(sm['빨강'])}", "필수 발길(장보기·병원·약국)까지", dot=CRITICAL),
                   unsafe_allow_html=True)
     c[2].markdown(ui.stat("주황 · 대면형 끊김", f"{int(sm['주황'])}", "대면 발길만", dot=SERIOUS), unsafe_allow_html=True)
-    c[3].markdown(ui.stat("보정 뒤 남은 경보일", f"{int(sm['경보일_공통충격보정'])}",
-                          f"집단 × 일 · 보정 없이 {int(sm['경보일_보정없음'])} → 계절 {int(sm['경보일_계절보정'])}"),
+    # 공통 충격 보정은 경보를 지우기도(명절) 드러내기도(30·40대는 그대로인데 고령만 준 주) 한다.
+    # 그래서 "남은"이 아니라 "보정 뒤"로 부르고, 늘어난 주는 늘어났다고 적는다 (10/01 강남 남 60대 주황이 그 예)
+    a0, a1, a2 = (int(sm[k]) for k in ("경보일_보정없음", "경보일_계절보정", "경보일_공통충격보정"))
+    note = " · 보정으로 드러난 끊김" if a2 > a0 else ""
+    c[3].markdown(ui.stat("보정 뒤 경보일", f"{a2}", f"집단 × 일 · 보정 없이 {a0} → 계절 {a1}{note}"),
                   unsafe_allow_html=True)
 
     st.write("")
@@ -202,7 +215,8 @@ def screen_briefing():
             "대면 발길 최저": signed(r["대면_7일최저_pct"]) if broken else "—",
             "필수 발길 최저": signed(r["필수_7일최저_pct"]) if broken else "—",
             "평소 닿던 업종": ui.esc(r["상대방업종"]) if broken else "—",
-            "다음 행동": ui.esc(next_action(r, int(same.get(r["도시"], 0)))),
+            # agent.py가 낸 문구를 그대로 쓴다(브리핑과 갈리지 않게). 열이 없는 옛 표에서만 화면 규칙으로
+            "다음 행동": ui.esc(r["다음행동"] if r.get("다음행동") else next_action(r, int(same.get(r["도시"], 0)))),
             "_calm": r["신호"] == "초록",
         })
     cols = [("신호", ""), ("집단", ""), ("끊긴 날", "n"), ("대면 발길 최저", "n"), ("필수 발길 최저", "n")]
@@ -212,9 +226,75 @@ def screen_briefing():
                "계절·같은 도시 30·40대 공통 충격을 보정한 값입니다. 「날씨 가능」은 끊긴 창 안에 궂은 날(특보 기준 근사)이 있었다는 "
                "꼬리표이고, 알림을 지우지 않습니다. 노랑(좁아짐)은 6개월 평균이라 주마다 바뀌지 않습니다. "
                "「평소 닿던 업종」은 6개월 평소 결제가 몰린 업종이고, 실제 가게·경로당은 본인 등록으로만 정합니다.")
+    st.write("")
+    people_table(as_of, g)
+    resource_lines(g)
 
 
 # ── ② 발길 상세 ────────────────────────────────────────────────────────
+N_DONG = {"강남": 22, "춘천": 25}  # 터전 순위의 분모 (도시 안 동 수)
+
+
+def people_table(as_of: pd.Timestamp, g: pd.DataFrame):
+    """끊긴 칸 × 가상 명부 → 이번 주 먼저 확인할 사람 (기획안 4절 0단계). 칸은 시군구 × 성 × 연령대이고,
+    동은 대상자 주소에서만 붙인다. 이름·연락처는 표에도 없다(E6 4절)."""
+    pp = load_people()
+    if pp is None:
+        return
+    p = pp[pp["기준일"] == as_of]
+    n_cell = g.set_index("집단")["명부_칸인원"] if "명부_칸인원" in g else pd.Series(dtype=float)
+    html(f"<div class='bg-sec'>먼저 확인할 사람 {len(p)}명 <span style='color:{ui.MUTE};font-weight:400'>"
+         "· 끊긴 칸마다 마지막 접촉이 오래된 3명 · <b>가상 명부</b>(41명, 실제 인물이 아닙니다)</span></div>")
+    if p.empty:
+        html(f"<div class='bg-callout'>이번 주에는 끊긴 집단이 없어 명부에서 올릴 사람이 없습니다. "
+             "좁아짐(노랑)은 사람이 아니라 동 단위 자원으로 나갑니다.</div>")
+        return
+    order = g.set_index("집단")["신호"].map(SIGNAL_ORDER)
+    p = p.assign(_o=p["집단"].map(order)).sort_values(["_o", "집단", "경과일"], ascending=[True, True, False])
+    rows = []
+    for _, r in p.iterrows():
+        city = r["집단"].split()[0]
+        label, color = SIGNAL[g.set_index("집단").loc[r["집단"], "신호"]]
+        n = n_cell.get(r["집단"])
+        rows.append({
+            "신호": ui.badge(label.split(" · ")[0], color),
+            "집단 (칸 인원)": ui.esc(r["집단"]) + (f" <span style='color:{ui.MUTE}'>({int(n)}명 중)</span>" if pd.notna(n) else ""),
+            "대상자": ui.esc(r["대상자ID"]) + f" <span style='color:{ui.MUTE}'>{ui.esc(r['명부종류'])}</span>",
+            "마지막 접촉": f"{int(r['경과일'])}일 전",
+            "주소 동 · 터전 약한 순": f"{ui.esc(r['행정동'])} · {int(r['터전순위'])}/{N_DONG.get(city, '')}",
+            "먼저 물을 창구": ui.esc(r["창구"]),
+            "물어볼 곳 (후보 수)": ui.esc(re.sub(r"^(가게|경로당·마을회관) 먼저 — ", "", r["물어볼곳"])),
+        })
+    html(ui.table([("신호", ""), ("집단 (칸 인원)", ""), ("대상자", ""), ("마지막 접촉", "n"),
+                   ("주소 동 · 터전 약한 순", ""), ("먼저 물을 창구", ""), ("물어볼 곳 (후보 수)", "m")], rows))
+    st.caption("대상자·주소·접촉일은 모두 가상입니다(scripts/build_synthetic.py, 생성 방식은 E5 설계자료). "
+               "발길 신호는 집단 단위이고, 동은 대상자 주소에서만 붙여 터전과 창구를 고릅니다 — 카드 지표를 동에 붙이지 않습니다. "
+               "창구는 그 동의 상대방 업종 가게가 경로당·마을회관의 3배가 안 되면 경로당·마을회관을 먼저 묻습니다(10/17 확정 전 기준). "
+               "후보 수는 상가·시설 공개 자료의 개수이고, 실제로 다니던 곳은 본인 등록으로만 받습니다.")
+
+
+def resource_lines(g: pd.DataFrame):
+    """이 주에 가져갈 것 — agent.py match_resource(#44)가 상태별로 고른 자원 후보 3개. 집단 단위라 같은 도시·같은
+    신호면 같은 후보가 나오므로 묶어 한 줄씩 보인다. 사람에게 맞춘 추천이 아니다."""
+    if "자원후보" not in g or not (g["자원후보"] != "").any():
+        return
+    kind = {"빨강": "방문 때 가져갈 복지서비스", "주황": "만남이 생기는 봉사·프로그램", "노랑": "동 단위로 나갈 봉사 일감"}
+    shorten = lambda s: s if len(s) <= 34 else s[:33] + "…"  # noqa: E731  1365 제목이 길다
+    lines, vol = [], False
+    x = g[g["자원후보"] != ""].assign(_o=lambda d: d["신호"].map(SIGNAL_ORDER)).sort_values(["_o", "도시"])
+    for (sig, city, res), d in x.groupby(["신호", "도시", "자원후보"], sort=False):
+        label, color = SIGNAL[sig]
+        items = " · ".join(ui.esc(shorten(s.strip())) for s in res.split(" · "))
+        vol |= sig in ("주황", "노랑")
+        lines.append(f"<div style='margin:4px 0;font-size:14px'>{ui.badge(label.split(' · ')[0], color)} "
+                     f"<b>{ui.esc(city)}</b> {len(d)}개 집단 — {kind.get(sig, '')}: {items}</div>")
+    html("<div class='bg-sec'>이 주에 가져갈 것 <span style='color:" + ui.MUTE + ";font-weight:400'>"
+         "· 상태별 자원 후보 3개 (거리·반복성·만남 순, 규칙 정렬)</span></div>" + "".join(lines))
+    st.caption("복지로 중앙·지자체 복지서비스(고령 대상만)와 1365 봉사 일감(모집 중만)에서 agent.py가 고른 후보입니다. "
+               "집단 단위라 개인에게 맞춘 추천이 아니고, 실제 연결은 방문한 담당자가 판단합니다."
+               + (" 1365 일감은 2026-10-14 수집 시점에 모집 중인 것이라 시연 기준일(2025년)의 일감이 아닙니다." if vol else ""))
+
+
 def trend(df: pd.DataFrame, fields: dict[str, str], title: str, sub: str, wk: pd.Timestamp) -> alt.Chart:
     long = df.melt(id_vars=["week"], value_vars=list(fields), var_name="k", value_name="값")
     long["지표"] = long["k"].map(fields)
