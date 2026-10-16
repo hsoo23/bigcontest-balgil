@@ -139,6 +139,23 @@ def tracked() -> set[str] | None:
     return {n for n in out.decode("utf-8").split(chr(0)) if n}
 
 
+def ignored(paths: list[Path]) -> set[str]:
+    """.gitignore가 로컬 전용으로 정한 파일(fac_*/raw/ 페이지 응답, *.truncated 등).
+
+    이런 파일은 문서에 **이미 적힌 것만** 갱신하고 새로 올리지 않는다. 안 그러면 원본을 가진 PC에서
+    돌릴 때만 페이지 응답 57줄이 붙어, tracked()가 멈춘 「PC마다 diff가 오감」이 이 경로로 되살아난다.
+    상가·경계 원본도 .gitignore 대상이지만 문서에 적혀 있으므로 그대로 해시를 갱신한다."""
+    if not paths:
+        return set()
+    rels = "\0".join(p.relative_to(ROOT).as_posix() for p in paths) + "\0"
+    try:
+        out = subprocess.run(["git", "check-ignore", "-z", "--stdin"], cwd=ROOT,
+                             input=rels.encode("utf-8"), capture_output=True).stdout
+    except OSError:
+        return set()
+    return {n for n in out.decode("utf-8").split(chr(0)) if n}
+
+
 def _strip_tail(line: str) -> str:
     for t in TAILS:
         if line.endswith(t):
@@ -166,18 +183,24 @@ def render(rows: list[dict]) -> str:
             f"| {m.get('spatial_unit','')} | {m.get('collected_at','')} | {m.get('license','')} | {url} |"
         )
     prev, in_git = recorded_files(), tracked()
+    local_only = ignored([p for r in rows for p in r["files"]])
     out += ["", "### 원본 파일", ""]
     for r in rows:
         out.append(f"**`{r['slug']}`**" + (f" — {r['meta'].get('note')}" if r["meta"].get("note") else ""))
         folder = EXTERNAL_DIR / r["slug"]
-        lines, here = [], set()
+        lines, here, skipped = [], set(), []
+        known = {_name_of(ln) for ln in prev.get(r["slug"], [])}
         for path in r["files"]:
             name = path.relative_to(folder).as_posix()
+            rel = path.relative_to(ROOT).as_posix()
+            if rel in local_only and name not in known:
+                skipped.append(name)
+                continue
             here.add(name)
-            ln = f"- `{name}` — {path.stat().st_size / 1e6:.1f} MB, SHA-256 `{sha256(path)[:16]}…`"
+            # 64자 전체를 적는다(#49 6번). 앞 16자만으로는 제출 원본을 대조하기에 근거가 약하다
+            ln = f"- `{name}` — {path.stat().st_size / 1e6:.1f} MB, SHA-256 `{sha256(path)}`"
             # 로컬에는 있지만 git에는 없는 원본(100MB 초과)도 같은 꼬리표를 받는다 — 그래야
             # 원본을 가진 PC와 없는 PC의 결과가 같아진다
-            rel = path.relative_to(ROOT).as_posix()
             lines.append(ln if in_git is None or rel in in_git else ln + _absent_tail(ln))
         kept = [_strip_tail(ln) for ln in prev.get(r["slug"], []) if _name_of(ln) not in here]
         for ln in kept:
@@ -185,6 +208,8 @@ def render(rows: list[dict]) -> str:
         if kept:
             print(f"[유지] {r['slug']}: 로컬에 없어 기록만 옮긴 파일 {len(kept)}개 — "
                   + ", ".join(_name_of(ln) for ln in kept))
+        if skipped:
+            print(f"[건너뜀] {r['slug']}: .gitignore가 로컬 전용으로 둔 파일 {len(skipped)}개 (문서에 없음)")
         if not lines:
             out.append("- (원본 파일 없음)")
         out += lines
