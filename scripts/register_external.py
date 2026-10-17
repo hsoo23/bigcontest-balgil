@@ -187,7 +187,9 @@ def render(rows: list[dict]) -> str:
                   + ", ".join(_name_of(ln) for ln in kept))
         if not lines:
             out.append("- (원본 파일 없음)")
-        out += lines
+        # 파일 이름으로 정렬한다. 로컬에 있는 파일을 먼저 넣고 기록에서 옮긴 줄을 뒤에 붙이면,
+        # 원본이 일부만 있는 PC마다 블록 안 순서가 달라져 diff 가 오간다(수경 #55 리뷰)
+        out += sorted(lines, key=_name_of)
         out.append("")
     return "\n".join(out)
 
