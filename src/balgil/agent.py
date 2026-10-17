@@ -485,7 +485,7 @@ def counterpart_kind(inp: Inputs, city: str, sex: str, age: str, adm_cd: str, mu
     return {"창구": first, "가게후보": shops, "경로당": centers, "업종": ind}
 
 
-PLACE_TOP = 4  # 2단계 장소 후보 수 (기획안 4절 「후보 3~4곳으로 줄인다」, 9절 교동 「한식 2 · 미용 1 · 약국 1」)
+PLACE_TOP = 4  # 2단계 장소 후보 수 (기획안 4절 「후보 3~4곳으로 줄인다」). 업종 셋이 한 곳씩 들어가고 남는 한 자리
 
 
 def place_candidates(places: pd.DataFrame, adm_cd: str, kind: str, industries: list[str],
@@ -504,9 +504,13 @@ def place_candidates(places: pd.DataFrame, adm_cd: str, kind: str, industries: l
             note = f"등록장소 {registered}가 장소 표에 없음"
     p = places[(places["행정동코드"] == str(adm_cd)) & (places["장소ID"] != registered)]
     if kind == "가게":
+        if not industries:  # 업종 표가 없으면 「그 동에 없다」가 아니라 「무엇을 찾을지 모른다」(#59 윤지)
+            return {"등록": reg_row, "후보": p.head(0), "메모": note, "모름": "업종을 몰라 후보를 고를 수 없음"}
         order = {u: i for i, u in enumerate(industries)}
         p = p[(p["종류"] == "가게") & p["업종"].isin(order) & (p["게이트키퍼"] == "Y")]
+        # 업종마다 한 곳씩 먼저, 그다음 둘째 — 업종 순서대로만 자르면 쏠림으로 넣은 셋째 업종이 밀린다(#59 현수)
         p = p.assign(_o=p["업종"].map(order)).sort_values(["_o", "장소ID"])
+        p = p.assign(_k=p.groupby("업종").cumcount()).sort_values(["_k", "_o", "장소ID"])
     else:
         p = p[p["종류"].isin(["경로당", "마을회관"])].sort_values("장소ID")
     return {"등록": reg_row, "후보": p.head(n), "메모": note}
@@ -520,7 +524,7 @@ def _place_label(r) -> str:
 def _place_text(c: dict) -> tuple[str, str]:
     """(등록장소, 후보장소) 두 칸. 후보가 없으면 그 사실을 적는다 — 빈칸으로 두면 「모른다」와 「없다」가 섞인다."""
     reg = _place_label(c["등록"]) if c["등록"] is not None else ""
-    cand = " · ".join(_place_label(r) for _, r in c["후보"].iterrows()) or "그 동에 해당 장소 없음"
+    cand = " · ".join(_place_label(r) for _, r in c["후보"].iterrows()) or c.get("모름") or "그 동에 해당 장소 없음"
     if c["메모"]:  # 등록 ID가 장소 표에 없으면 후보로 내려가되, 그 사실을 앞에 적는다
         cand = f"({c['메모']}) {cand}"
     return reg, cand
@@ -582,8 +586,10 @@ def _person_status(last: pd.Series, names: dict | None = None) -> str:
         return f"종결 — 이상 없음 ({last['단계']})"
     if last["결과"] == "도움 필요":
         rid = last["연결 자원"]
-        return (f"자원 연결 — {(names or {}).get(rid, '')} ({rid})".replace("—  (", "— (") if rid
-                else "도움 필요 — 자원 연결 대기")
+        if not rid:
+            return "도움 필요 — 자원 연결 대기"
+        name = (names or {}).get(rid)  # 자원 표가 없는 PC에서는 이름을 모른다 — 빈 자리를 남기지 않고 ID만(#64 윤지)
+        return f"자원 연결 — {name} ({rid})" if name else f"자원 연결 — {rid}"
     return f"다음 단계 — {OUTCOME_STEPS[step + 1]}" if step + 1 < len(OUTCOME_STEPS) else "방문에도 닿지 않음 — 기관 연계"
 
 
@@ -610,6 +616,12 @@ def log_outcome(outcomes: pd.DataFrame, roster: pd.DataFrame | None = None,
     if roster is not None:
         cell = roster.set_index("대상자ID")[["시군구", "성", "연령대"]]
         p = people.join(cell, on="대상자ID")
+        gone = p["시군구"].isna()  # 명부가 바뀌어 빠진 사람 — 칸 집계에서 조용히 사라지지 않게 센다(#64 현수)
+        if gone.any():
+            print(f"[경고] 명부에 없는 대상자 {int(gone.sum())}명은 칸 집계에서 뺍니다: {sorted(p.loc[gone, '대상자ID'])[:5]}")
+        out["명부밖"] = int(gone.sum())
+        p = p[~gone].copy()
+        # 칸의 「도움 필요」에는 방문까지 닿지 않은 사람(기관 연계)도 들어간다 — 단계 표의 결과 값과 다르다(07절 7.5)
         p["도움필요"] = p["마지막결과"].eq("도움 필요") | p["상태"].str.startswith("방문에도")
         out["칸"] = (p.groupby(["시군구", "성", "연령대"])
                      .agg(확인한사람=("대상자ID", "size"), 도움필요=("도움필요", "sum"),
@@ -630,8 +642,9 @@ def _outcome_lines(res: dict) -> list[str]:
     else:
         lines.append("〈이어서 할 것〉 없음 — 기록된 사람은 모두 종결")
     if "칸" in res:
-        lines.append("〈칸마다〉 " + " / ".join(f"{r.시군구.split()[-1]} {r.성} {r.연령대}: 확인 {r.확인한사람} · 도움 필요 {r.도움필요}"
-                                            for r in res["칸"].itertuples()))
+        cells = " / ".join(f"{r.시군구.split()[-1]} {r.성} {r.연령대}: 확인 {r.확인한사람} · 도움 필요 {r.도움필요}"
+                           for r in res["칸"].itertuples()) or "명부와 겹치는 기록 없음"
+        lines.append(f"〈칸마다〉 {cells}" + (f" · 명부에 없음 {res['명부밖']}명" if res.get("명부밖") else ""))
     if len(res["집단기록"]):
         lines.append(f"〈집단 기록〉 {len(res['집단기록'])}건 — 받아 두었고 판정에는 쓰지 않습니다(집단 종결은 가를 것이 없음)")
     return lines
