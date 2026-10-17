@@ -27,8 +27,8 @@
 ## 환경 준비
 
 ```bash
-git clone https://github.com/hsoo23/balgil.git
-cd balgil
+git clone https://github.com/hsoo23/bigcontest-balgil.git
+cd bigcontest-balgil
 python -m venv .venv && source .venv/bin/activate   # 윈도우: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
