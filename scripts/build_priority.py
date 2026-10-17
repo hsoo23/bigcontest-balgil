@@ -95,17 +95,14 @@ def window_counts(g: pd.DataFrame, mult: int | None = None) -> list[int]:
         _INP = agent.load_inputs()
         assert _INP.industry is not None and _INP.dong_stores is not None and _INP.facilities is not None, \
             "segment_industry · dong_industry_stores · fac_dong이 있어야 창구를 셉니다 (원본이 있는 PC에서)"
-    old = agent.SHOP_PER_CENTER
-    agent.SHOP_PER_CENTER = old if mult is None else mult
-    try:
-        out = []
-        for city, cd in zip(g["도시"], g["ADM_CD"]):
-            kinds = [agent.counterpart_kind(_INP, city, s, a, cd) for s, a in ELDER]
-            assert all(k["업종"] is not None and len(k["업종"]) for k in kinds), f"{city} {cd}: 상대방 업종이 비었습니다"
-            out.append(sum(k["창구"] != "가게" for k in kinds))
-        return out
-    finally:
-        agent.SHOP_PER_CENTER = old
+    # 배수는 인자로 넘긴다. 모듈 전역(agent.SHOP_PER_CENTER)을 바꿨다 되돌리면, 도중에 멈췄을 때나
+    # 같은 프로세스에서 브리핑을 같이 돌릴 때 본 규칙(3배)이 바뀐 채로 남을 수 있다
+    out = []
+    for city, cd in zip(g["도시"], g["ADM_CD"]):
+        kinds = [agent.counterpart_kind(_INP, city, s, a, cd, mult=mult) for s, a in ELDER]
+        assert all(k["업종"] is not None and len(k["업종"]) for k in kinds), f"{city} {cd}: 상대방 업종이 비었습니다"
+        out.append(sum(k["창구"] != "가게" for k in kinds))
+    return out
 
 
 def window_sensitivity(g: pd.DataFrame) -> pd.DataFrame:
