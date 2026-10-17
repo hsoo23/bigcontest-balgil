@@ -8,6 +8,7 @@
   문체   체언 종결("~함"), 수동형("산출되었다") 이 섞였는가
   표기   본문 서술에 소수 셋째 자리 이하가 있는가 (--decimals 로만. 규칙은 첫째 자리까지)
          표 줄은 보지 않는다 — AUC·SHAP·상관·비율은 셋째 자리가 뜻을 가진다
+  물결표 한 줄에 이스케이프 안 된 ~ 가 둘 이상인가 (취소선으로 그려진다)
 
 한계
   코드 블록·표 구분선·링크 주소는 건너뛴다. 용어는 인용 안에서도 걸린다 —
@@ -23,7 +24,14 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT = sorted((ROOT / "docs" / "draft").glob("*.md"))
+# docs/draft 만 보면 제출에 같이 나가는 문서(기획안·분석결과·입력형식·목차)를 놓친다.
+# archive 는 옛 기획안, notion 은 make_notion.py 가 만드는 파생물이라 뺀다
+SKIP_DIRS = ("archive", "notion")
+# 규칙을 적은 문서는 금지어를 **이름으로** 들어야 한다. 용어 표와 「쓰면 안 되는 문장」 표가 그렇다
+SKIP_FILES = ("보고서_목차.md", "협업규칙.md", "실행계획.md")
+DEFAULT = sorted(p for p in (ROOT / "docs").rglob("*.md")
+                 if not any(d in p.relative_to(ROOT / "docs").parts for d in SKIP_DIRS)
+                 and p.name not in SKIP_FILES)
 
 # 보고서_목차.md 3절 「용어 — 왼쪽만 씁니다」의 오른쪽. 바꿀 말을 함께 적는다
 BANNED = {
@@ -55,6 +63,17 @@ DECIMAL_OK_NEAR = re.compile(r"(ρ|AUC|상관|변동계수|÷|비율|시드|sha|
 
 SKIP = re.compile(r"^\s*(?:```|\|\s*-{2,}|> \*\*담당)")
 
+# 한 줄에 이스케이프 안 된 물결표가 둘 이상이면 GitHub·일부 변환기가 그 사이를 취소선으로 그린다.
+# "0.51~0.64 … 0.73~0.82" 가 "51~0 … 0" 이 지워진 모양이 된다. 숫자 범위를 쓰는 우리 문서에서
+# 자주 생기고, 보고서를 PDF 로 뽑을 때도 따라간다(#68).
+BACKSLASH = chr(92)
+
+
+def loose_tildes(line: str) -> int:
+    """이스케이프되지 않은 물결표 수. 정규식으로 쓰면 역슬래시가 겹쳐 읽기 어렵다."""
+    return sum(1 for i, ch in enumerate(line)
+               if ch == "~" and (i == 0 or line[i - 1] != BACKSLASH))
+
 
 def show(path: Path) -> str:
     """저장소 안이면 상대경로, 밖이면 그대로. --files 로 바깥 파일을 줄 수 있다."""
@@ -75,14 +94,21 @@ def scan(path: Path, decimals: bool = False) -> list[str]:
             continue
         body = re.sub(r"\]\([^)]*\)", "]()", line)       # 링크 주소 제외
         body = re.sub(r"`[^`]*`", "``", body)             # 인라인 코드 제외
+        # 큰따옴표 안은 **쓴 것이 아니라 가리킨 것**이다. 빼지 않으면 금지어를 인용한 줄이 걸린다.
+        # 「」는 빼지 않는다 — draft 가 강조로 많이 쓰고, 그 안에 금지어를 그냥 쓰면 잡아야 한다(수경 #70 리뷰).
+        # 규칙을 적은 문서 셋은 위에서 통째로 빼므로 「」를 봐도 시끄러워지지 않는다
+        quoted = re.sub(r"[\"“”][^\"“”]*[\"“”]", "", body)
+        # 일부러 쓴 취소선(~~…~~)만 지우고 센다. 줄을 통째로 건너뛰면 같은 줄에 있는 범위를 놓친다(수경 #70 리뷰)
+        if loose_tildes(re.sub(r"~~[^~]*~~", "", body)) >= 2:
+            out.append(f"  {i:>4}  물결표  ~ 가 둘 이상 — 취소선으로 그려집니다. `{BACKSLASH}~` 로 이스케이프")
         for bad, good in BANNED.items():
-            if bad not in body:
+            if bad not in quoted:
                 continue
             f = FALSE_HIT.get(bad)
-            if f and all(f.search(body[m.start():]) for m in re.finditer(bad, body)):
+            if f and all(f.search(quoted[m.start():]) for m in re.finditer(bad, quoted)):
                 continue  # 모두 부분일치면 넘긴다
             out.append(f"  {i:>4}  용어  「{bad}」 → {good}")
-        if "대면" in body and not KEEP_DAEMYEON.search(body):
+        if "대면" in quoted and not KEEP_DAEMYEON.search(quoted):
             out.append(f"  {i:>4}  용어  「대면」 — 업종 분류면 「체류」로. 끊김 종류 라벨이면 그대로")
         for pat, why in STYLE:
             if pat.search(body):
