@@ -24,7 +24,14 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT = sorted((ROOT / "docs" / "draft").glob("*.md"))
+# docs/draft 만 보면 제출에 같이 나가는 문서(기획안·분석결과·입력형식·목차)를 놓친다.
+# archive 는 옛 기획안, notion 은 make_notion.py 가 만드는 파생물이라 뺀다
+SKIP_DIRS = ("archive", "notion")
+# 규칙을 적은 문서는 금지어를 **이름으로** 들어야 한다. 용어 표와 「쓰면 안 되는 문장」 표가 그렇다
+SKIP_FILES = ("보고서_목차.md", "협업규칙.md", "실행계획.md")
+DEFAULT = sorted(p for p in (ROOT / "docs").rglob("*.md")
+                 if not any(d in p.relative_to(ROOT / "docs").parts for d in SKIP_DIRS)
+                 and p.name not in SKIP_FILES)
 
 # 보고서_목차.md 3절 「용어 — 왼쪽만 씁니다」의 오른쪽. 바꿀 말을 함께 적는다
 BANNED = {
@@ -87,16 +94,19 @@ def scan(path: Path, decimals: bool = False) -> list[str]:
             continue
         body = re.sub(r"\]\([^)]*\)", "]()", line)       # 링크 주소 제외
         body = re.sub(r"`[^`]*`", "``", body)             # 인라인 코드 제외
+        # 따옴표 안은 **쓴 것이 아니라 가리킨 것**이다. 협업규칙·실행계획의 「쓰면 안 되는 문장」
+        # 표와 보고서_목차의 용어 표가 금지어를 그렇게 인용한다. 빼지 않으면 규칙을 적은 줄이 걸린다
+        quoted = re.sub(r"[\"“”][^\"“”]*[\"“”]|「[^」]*」", "", body)
         if "~~" not in line and loose_tildes(body) >= 2:
             out.append(f"  {i:>4}  물결표  ~ 가 둘 이상 — 취소선으로 그려집니다. `\~` 로 이스케이프")
         for bad, good in BANNED.items():
-            if bad not in body:
+            if bad not in quoted:
                 continue
             f = FALSE_HIT.get(bad)
-            if f and all(f.search(body[m.start():]) for m in re.finditer(bad, body)):
+            if f and all(f.search(quoted[m.start():]) for m in re.finditer(bad, quoted)):
                 continue  # 모두 부분일치면 넘긴다
             out.append(f"  {i:>4}  용어  「{bad}」 → {good}")
-        if "대면" in body and not KEEP_DAEMYEON.search(body):
+        if "대면" in quoted and not KEEP_DAEMYEON.search(quoted):
             out.append(f"  {i:>4}  용어  「대면」 — 업종 분류면 「체류」로. 끊김 종류 라벨이면 그대로")
         for pat, why in STYLE:
             if pat.search(body):

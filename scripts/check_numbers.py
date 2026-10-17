@@ -31,6 +31,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 TABLE = ROOT / "docs" / "최종수치표.md"
+# 「숫자는 수치표에서만」은 **보고서·발표자료**의 규칙이다(보고서_목차 3절). 기획안·분석결과·메모는
+# 수치표가 생기기 전에 쓴 글이고 그 자체가 출처라 여기서 보지 않는다 — 넓히면 14건이 늘 뜬다.
+# 용어 쪽은 반대로 모든 제출 문서에 걸리므로 check_terms.py 는 docs/ 전체를 본다
 DEFAULT = sorted((ROOT / "docs" / "draft").glob("*.md"))
 
 UNIT = r"%|배|건|명|일|개|곳|칸|동|회|주|쪽"
