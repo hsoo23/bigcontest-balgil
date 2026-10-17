@@ -1,8 +1,12 @@
 # Pinned 2026-10-10. Keep all three machines on these versions.
+# numpy and scipy pinned 2026-10-17 (#65 item 5): the versions a fresh install
+# picked that day, with all 17 reference results matching.
 # Requires Python 3.11+ (geopandas 1.2.0).
 # Do not bump alone - agree in a meeting, then commit. Rationale: README.
 
 pandas==2.3.3
+numpy==2.5.4
+scipy==1.18.1
 pyarrow==21.0.0
 geopandas==1.2.0
 scikit-learn==1.7.2
