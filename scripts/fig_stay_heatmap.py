@@ -4,9 +4,17 @@
 춘천과 수준을 맞대지 않는다(실행계획 1-2절). 그래서 한 눈금에 두 도시를 올리지 않는다.
 색은 크기 하나만 나타내므로 한 색상(파랑)의 연한→진한 순차 눈금이다.
 
+90대 칸은 지표 패널(36칸)에 있어 그대로 그린다. 춘천 남성은 80대보다 90대가 다시 진해지는데, 90대는 결제가
+적고 부정기해(하루 37건 · 변동계수 0.46, 최종 수치표 1절) 흔들리는 칸이다 — 끊김 판정에서 90대를 빼는 이유라
+그림 아래에 같이 적는다(#62 윤지 리뷰).
+
 입력: reanalysis/reference/features_segment.csv (저장소에 있음 — 원본 없이 그려진다)
 출력: reports/figures/fig_stay_heatmap.png
 실행: python scripts/fig_stay_heatmap.py
+
+PNG는 바이트로는 재현되지 않는다. 그림과 값은 같지만 PC마다 글꼴 렌더링이 달라 픽셀 몇백 개가 다르다.
+그래서 reanalysis/reference/처럼 **한 사람이 만들어 커밋하고, 다른 PC에서는 다시 만들어 커밋하지 않는다.**
+값이 바뀌어 다시 그려야 할 때만 만든 사람이 새로 올린다.
 """
 from __future__ import annotations
 
@@ -73,10 +81,12 @@ def main() -> None:
         cb.ax.tick_params(labelsize=8, colors=MUTED, length=0)
         ax.set_facecolor(SURFACE)
 
+    fig.text(0.01, 0.043, "90대는 결제가 적고 부정기해(하루 37건 · 변동계수 0.46) 흔들립니다 — 춘천 남성 90대가 다시 진해지는 것도 그 때문이고, "
+             "끊김 판정에서 90대를 빼는 이유입니다.", fontsize=8, color=MUTED)
     fig.text(0.01, 0.015, "출처: 신한카드 제공 데이터, 2025.7~12 · 거주자 결제 건수 기준 · 체류 업종 11개 ÷ 전 업종. "
              "색 눈금은 도시마다 따로입니다 — 두 도시의 수준을 맞대지 않습니다.",
              fontsize=8, color=MUTED)
-    fig.tight_layout(rect=(0, 0.04, 1, 1))
+    fig.tight_layout(rect=(0, 0.07, 1, 1))
     OUT.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(OUT, dpi=200, facecolor=SURFACE)
     print(f"저장: {OUT.relative_to(ROOT)}")
