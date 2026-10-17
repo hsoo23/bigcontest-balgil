@@ -104,7 +104,9 @@ CSV, UTF-8. 한 줄이 대상자 한 명입니다. 예시: [`docs/agent_example/
 
 > **1365는 시연 기준일의 일감이 아닙니다.** 카드·통신 자료는 2025년이고 1365는 **2026-10-14에 수집한, 그때 모집 중인 일감**입니다. 브리핑에 수집일을 같이 적습니다(`data/external/volunteer_1365/meta.json`의 `collected_at`). 복지서비스는 상시 사업이라 이 문제가 없습니다.
 
-## 4. 종결 기록 — `log_outcome` (10/17 확정 뒤)
+## 4. 종결 기록 — `log_outcome`
+
+담당자가 확인한 결과를 한 줄씩 적는 표입니다. `--outcomes`로 넣으면 브리핑 끝에 「지난 확인 결과」가 붙습니다. 예시: [`docs/agent_example/outcome_example_가상.csv`](agent_example/outcome_example_%EA%B0%80%EC%83%81.csv)
 
 | 열 | 값 |
 |---|---|
@@ -112,7 +114,21 @@ CSV, UTF-8. 한 줄이 대상자 한 명입니다. 예시: [`docs/agent_example/
 | `대상자ID` 또는 `집단` | 개인 종결이면 ID, 집단 종결이면 `춘천 여 70대` 형식 |
 | `단계` | `1 전화` / `2 발길이 닿던 곳` / `3 방문` |
 | `결과` | `이상 없음` / `도움 필요` / `연락 안 됨` |
-| `연결 자원` | 자원 ID (없으면 비움) |
+| `연결 자원` | 자원 ID — 브리핑 자원 후보의 번호(복지로 `servId`, 1365 등록번호). 없으면 비움 |
+
+- **읽을 때 검사합니다 (`read_outcomes`)** — `단계`·`결과`가 위 값 밖이거나, `대상자ID`와 `집단`이 둘 다 비었거나 둘 다 찼거나, `기록일`이 날짜가 아니면 **몇 행인지 적어 멈춥니다.** `연결 자원`이 자원 목록에 없으면 경고만 냅니다(목록은 수집일마다 바뀝니다).
+- **기준일보다 늦은 기록은 그 주의 집계에서 뺍니다** — 명부의 접촉일과 같은 규칙입니다(#48).
+- **집단 기록은 받아 두고 판정에 쓰지 않습니다.** 집단 끊김 14건이 모두 함께 복귀해 가를 것이 없기 때문입니다(07절 7.5).
+
+**나오는 것** (`log_outcome`)
+
+| 표 | 내용 |
+|---|---|
+| 사람 | 대상자마다 가장 늦은 기록과 지금 상태 — 종결(이상 없음) / 다음 단계 / 자원 연결(이름과 ID) / 자원 연결 대기 / 방문에도 닿지 않음 → 기관 연계. `--out`이면 `agent_outcomes.csv` |
+| 단계 | 단계 × 결과 건수 — 확인이 몇 단계에서 끝나는가 |
+| 칸 | 명부를 주면 끊김 칸(시군구 × 성 × 연령대)마다 확인한 사람 · 도움 필요 · 이상 없음 |
+
+「칸」 표가 **임계값 되먹임의 재료**입니다. 같은 칸에서 확인한 사람이 계속 「이상 없음」이면 그 칸의 경보가 헐겁다는 뜻입니다. 다만 **임계값을 자동으로 바꾸지 않습니다** — 시연 기록은 가상이고, 실제 기록이 쌓인 뒤 사람이 정합니다.
 
 ## 5. 에이전트가 이미 읽는 것 (D4가 만들 필요 없음)
 
@@ -150,6 +166,8 @@ python scripts/build_segment_industry.py      # 상대방 업종·동 점포 수
 python scripts/run_agent.py --as-of 2025-10-01 --roster docs/agent_example/roster_example_가상.csv --out data/processed/agent
 # D4 가상 명부·장소 표로 시연 주 (#49 2번)
 python scripts/run_agent.py --as-of 2025-10-12 --roster data/synthetic/roster_가상.csv --places data/synthetic/places_가상.csv
+# 종결 기록까지 (가상)
+python scripts/run_agent.py --as-of 2025-10-19 --roster docs/agent_example/roster_example_가상.csv --outcomes docs/agent_example/outcome_example_가상.csv
 ```
 
 `--as-of`를 빼면 끊김 자료의 마지막 날(2025-12-31)로 돕니다.
