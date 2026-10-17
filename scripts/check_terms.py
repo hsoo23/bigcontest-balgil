@@ -94,11 +94,13 @@ def scan(path: Path, decimals: bool = False) -> list[str]:
             continue
         body = re.sub(r"\]\([^)]*\)", "]()", line)       # 링크 주소 제외
         body = re.sub(r"`[^`]*`", "``", body)             # 인라인 코드 제외
-        # 따옴표 안은 **쓴 것이 아니라 가리킨 것**이다. 협업규칙·실행계획의 「쓰면 안 되는 문장」
-        # 표와 보고서_목차의 용어 표가 금지어를 그렇게 인용한다. 빼지 않으면 규칙을 적은 줄이 걸린다
-        quoted = re.sub(r"[\"“”][^\"“”]*[\"“”]|「[^」]*」", "", body)
-        if "~~" not in line and loose_tildes(body) >= 2:
-            out.append(f"  {i:>4}  물결표  ~ 가 둘 이상 — 취소선으로 그려집니다. `\~` 로 이스케이프")
+        # 큰따옴표 안은 **쓴 것이 아니라 가리킨 것**이다. 빼지 않으면 금지어를 인용한 줄이 걸린다.
+        # 「」는 빼지 않는다 — draft 가 강조로 많이 쓰고, 그 안에 금지어를 그냥 쓰면 잡아야 한다(수경 #70 리뷰).
+        # 규칙을 적은 문서 셋은 위에서 통째로 빼므로 「」를 봐도 시끄러워지지 않는다
+        quoted = re.sub(r"[\"“”][^\"“”]*[\"“”]", "", body)
+        # 일부러 쓴 취소선(~~…~~)만 지우고 센다. 줄을 통째로 건너뛰면 같은 줄에 있는 범위를 놓친다(수경 #70 리뷰)
+        if loose_tildes(re.sub(r"~~[^~]*~~", "", body)) >= 2:
+            out.append(f"  {i:>4}  물결표  ~ 가 둘 이상 — 취소선으로 그려집니다. `{BACKSLASH}~` 로 이스케이프")
         for bad, good in BANNED.items():
             if bad not in quoted:
                 continue
