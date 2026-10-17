@@ -8,6 +8,7 @@
   문체   체언 종결("~함"), 수동형("산출되었다") 이 섞였는가
   표기   본문 서술에 소수 셋째 자리 이하가 있는가 (--decimals 로만. 규칙은 첫째 자리까지)
          표 줄은 보지 않는다 — AUC·SHAP·상관·비율은 셋째 자리가 뜻을 가진다
+  물결표 한 줄에 이스케이프 안 된 ~ 가 둘 이상인가 (취소선으로 그려진다)
 
 한계
   코드 블록·표 구분선·링크 주소는 건너뛴다. 용어는 인용 안에서도 걸린다 —
@@ -55,6 +56,17 @@ DECIMAL_OK_NEAR = re.compile(r"(ρ|AUC|상관|변동계수|÷|비율|시드|sha|
 
 SKIP = re.compile(r"^\s*(?:```|\|\s*-{2,}|> \*\*담당)")
 
+# 한 줄에 이스케이프 안 된 물결표가 둘 이상이면 GitHub·일부 변환기가 그 사이를 취소선으로 그린다.
+# "0.51~0.64 … 0.73~0.82" 가 "51~0 … 0" 이 지워진 모양이 된다. 숫자 범위를 쓰는 우리 문서에서
+# 자주 생기고, 보고서를 PDF 로 뽑을 때도 따라간다(#68).
+BACKSLASH = chr(92)
+
+
+def loose_tildes(line: str) -> int:
+    """이스케이프되지 않은 물결표 수. 정규식으로 쓰면 역슬래시가 겹쳐 읽기 어렵다."""
+    return sum(1 for i, ch in enumerate(line)
+               if ch == "~" and (i == 0 or line[i - 1] != BACKSLASH))
+
 
 def show(path: Path) -> str:
     """저장소 안이면 상대경로, 밖이면 그대로. --files 로 바깥 파일을 줄 수 있다."""
@@ -75,6 +87,8 @@ def scan(path: Path, decimals: bool = False) -> list[str]:
             continue
         body = re.sub(r"\]\([^)]*\)", "]()", line)       # 링크 주소 제외
         body = re.sub(r"`[^`]*`", "``", body)             # 인라인 코드 제외
+        if "~~" not in line and loose_tildes(body) >= 2:
+            out.append(f"  {i:>4}  물결표  ~ 가 둘 이상 — 취소선으로 그려집니다. `\~` 로 이스케이프")
         for bad, good in BANNED.items():
             if bad not in body:
                 continue
