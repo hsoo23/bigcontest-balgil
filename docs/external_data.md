@@ -24,76 +24,76 @@
 ### 원본 파일
 
 **`fac_library`** — Open API(https://api.data.go.kr/openapi/tn_pubr_public_lbrry_api)로 전국 3,597건을 1000건씩 받았다. 포털 파일 다운로드는 5만 건 상한에 잘려 쓰지 않는다. 합친 CSV를 이 폴더에 두고(git에 올림), 페이지별 원본 응답(JSON)은 raw/에 로컬로만 둔다. 다시 받으려면 python scripts/fetch_facility_api.py fac_library
-- `전국도서관표준데이터_API_20261010.csv` — 1.2 MB, SHA-256 `7985e15db389e6de…`
+- `전국도서관표준데이터_API_20261010.csv` — 1.2 MB, SHA-256 `7985e15db389e6de3b38dcfdebb18555e83fb910c3b203b73e7c7ebbbd00231a`
 
 **`fac_senior_center`** — Open API(https://api.data.go.kr/openapi/tn_pubr_public_vill_hall_sen_cent_api)로 전국 51,586건을 1000건씩 받았다. 포털 파일 다운로드는 5만 건 상한에 잘려 쓰지 않는다. 합친 CSV를 이 폴더에 두고(git에 올림), 페이지별 원본 응답(JSON)은 raw/에 로컬로만 둔다. 다시 받으려면 python scripts/fetch_facility_api.py fac_senior_center
-- `전국마을회관및경로당표준데이터_API_20261010.csv` — 12.6 MB, SHA-256 `11b2d14007e00efb…`
+- `전국마을회관및경로당표준데이터_API_20261010.csv` — 12.6 MB, SHA-256 `11b2d14007e00efbd2c6431cc6e633ff61674d464d33d6095aceba4b49e13c9a`
 
 **`kma_asos`** — 자료형태 일자료, 항목 기온·강수·적설 전체를 CSV로 받은 원본 그대로(OBS_ASOS_DD_20261010112520.csv, cp949). 지점별 184일 전부 있음. 강남구에는 ASOS 지점이 없어 서울(108)을 대표로 쓴다. 춘천(101)은 기간 내 적설 열이 전부 공란이라 미관측으로 보고 결측 처리한다.
-- `OBS_ASOS_DD_20261010112520.csv` — 0.0 MB, SHA-256 `7e0dafb2dfca091b…`
+- `OBS_ASOS_DD_20261010112520.csv` — 0.0 MB, SHA-256 `7e0dafb2dfca091bc46516643e505f4e44e3d161a820f83d4b143033965a17e3`
 
 **`mois_population`** — 수집 방법 — scripts/fetch_mois.py로 받았습니다. 조회 조건은 mois_single_household와 같습니다. 행정구역 서울특별시 강남구·강원특별자치도 춘천시, 조회기간 월간 2025년 12월, 등록구분 전체, 구분 계·남·여, 연령 구분 단위 1세, 연령 조회 범위 0세~100세 이상, CSV(cp949). 같은 스크립트를 다시 돌리면 바이트까지 같은 파일이 나오는 것을 확인했습니다. 내려받은 원본을 가공 없이 보관합니다. 1인세대율의 분모로 mois_single_household와 같은 축(동·성·1세)입니다.
-- `202512_행정동별_연령별_인구현황_강남구.csv` — 0.0 MB, SHA-256 `ad7ffeb6c60267af…`
-- `202512_행정동별_연령별_인구현황_춘천시.csv` — 0.0 MB, SHA-256 `9239314bf612cb7f…`
+- `202512_행정동별_연령별_인구현황_강남구.csv` — 0.0 MB, SHA-256 `ad7ffeb6c60267af3f8fbe035cc51b55c34d0834217973b9c7d2b25aa9d68244`
+- `202512_행정동별_연령별_인구현황_춘천시.csv` — 0.0 MB, SHA-256 `9239314bf612cb7f385ff2b1fa20e92625043df580402f39353d1fd014e9bad9`
 
 **`mois_single_household`** — 수집 방법 — scripts/fetch_mois.py로 받았습니다. 조회 조건은 행정구역 서울특별시 강남구(1168000000)·강원특별자치도 춘천시(5111000000), 조회기간 월간 2025년 12월(이 통계표는 검색기간이 1개월로 제한됩니다), 등록구분 전체, 구분 계·남·여, 연령 구분 단위 1세, 연령 조회 범위 0세~100세 이상, 파일 형식 CSV(cp949)입니다. 같은 스크립트를 다시 돌리면 바이트까지 같은 파일이 나오는 것을 확인했습니다. 내려받은 원본을 가공 없이 그대로 보관하며, 분석 코드(build_external.py)가 이 형식에 맞춰 읽습니다. 컬럼은 '2025년12월_계_65세' 형태이고 지역은 '서울특별시 강남구 신사동(1168051000)'처럼 한 칸에 들어 있습니다. 강남구 22개 동 + 춘천시 25개 읍면동, 각 파일에 시군구 합계 1행이 포함됩니다. 1인세대율의 분자이며 분모는 mois_population입니다.
-- `202512_행정동별_성연령별_1인세대수_강남구.csv` — 0.0 MB, SHA-256 `26011e4c18f29ca6…`
-- `202512_행정동별_성연령별_1인세대수_춘천시.csv` — 0.0 MB, SHA-256 `7031301da092b9e4…`
+- `202512_행정동별_성연령별_1인세대수_강남구.csv` — 0.0 MB, SHA-256 `26011e4c18f29ca66fd23ae9a432d26327fac4f8721366d7490838941bcb65ae`
+- `202512_행정동별_성연령별_1인세대수_춘천시.csv` — 0.0 MB, SHA-256 `7031301da092b9e495ab207c60e52c6c90a26b0110255a244b3f44a42bead8f9`
 
 **`sbiz_store`** — 공공데이터포털 파일 다운로드(소상공인시장진흥공단_상가(상권)정보_20260630.zip, 시도별 CSV 16개) 중 서울·강원 두 파일만 압축 해제해 그대로 둔다. 대상 점포 강남구 66,269 + 춘천시 17,984 = 84,253개(분석결과.md와 같은 판). 서울 CSV가 302MB라 GitHub 한도를 넘어 git에는 이 meta.json만 올린다.
-- `[필독]파일열람방법.txt` — 0.0 MB, SHA-256 `b81d2af050e9df2c…` · **이 PC에 없음 — 기록만 유지**
-- `소상공인시장진흥공단_상가(상권)정보_강원_202606.csv` — 62.6 MB, SHA-256 `6505ddc859141a3c…` · **이 PC에 없음 — 기록만 유지**
-- `소상공인시장진흥공단_상가(상권)정보_서울_202606.csv` — 301.9 MB, SHA-256 `08d3fd08b3784025…` · **이 PC에 없음 — 기록만 유지**
+- `[필독]파일열람방법.txt` — 0.0 MB, SHA-256 `b81d2af050e9df2c01bbccf6cd4de42d7faea8d974fdce5e0a581391602a4925` · **git 미포함 — 수집 방법은 위 note**
+- `소상공인시장진흥공단_상가(상권)정보_강원_202606.csv` — 62.6 MB, SHA-256 `6505ddc859141a3c7526f2c3e0aec101afc4d7fdc52bb38a2bd7f54b67f917dd` · **git 미포함 — 수집 방법은 위 note**
+- `소상공인시장진흥공단_상가(상권)정보_서울_202606.csv` — 301.9 MB, SHA-256 `08d3fd08b37840256cccd4f09bad6fc33133b647cbff05f22f26fc962cf84152` · **git 미포함 (100MB 초과) — 해시로 대조**
 
 **`sgis_boundary`** — SGIS 로그인 → 자료신청 → 행정구역 경계(읍면동), 기준 2025년 2분기, 전국으로 받은 shp 세트(shp·shx·dbf·prj·cpg) 그대로. 전국 3,559개 동, 대상 강남구 22·춘천시 25개. .shp가 135MB라 GitHub 한도를 넘어 git에는 이 meta.json만 올린다. 원본은 각자 같은 방법으로 받아 이 폴더에 둔다.
-- `bnd_dong_00_2025_2Q.cpg` — 0.0 MB, SHA-256 `3ad3031f5503a440…` · **이 PC에 없음 — 기록만 유지**
-- `bnd_dong_00_2025_2Q.dbf` — 0.1 MB, SHA-256 `55ef3b6114e10424…` · **이 PC에 없음 — 기록만 유지**
-- `bnd_dong_00_2025_2Q.prj` — 0.0 MB, SHA-256 `e21b26451491c617…` · **이 PC에 없음 — 기록만 유지**
-- `bnd_dong_00_2025_2Q.shp` — 135.0 MB, SHA-256 `8f5dec93ce06be03…` · **이 PC에 없음 — 기록만 유지**
-- `bnd_dong_00_2025_2Q.shx` — 0.0 MB, SHA-256 `b04b98b8807bff24…` · **이 PC에 없음 — 기록만 유지**
+- `bnd_dong_00_2025_2Q.cpg` — 0.0 MB, SHA-256 `3ad3031f5503a4404af825262ee8232cc04d4ea6683d42c5dd0a2f2a27ac9824` · **git 미포함 — 수집 방법은 위 note**
+- `bnd_dong_00_2025_2Q.dbf` — 0.1 MB, SHA-256 `55ef3b6114e10424bc2e0e35e99b4ae0cf0d2c55ab9a8afe9a063337c894f266` · **git 미포함 — 수집 방법은 위 note**
+- `bnd_dong_00_2025_2Q.prj` — 0.0 MB, SHA-256 `e21b26451491c617318aab7d28abf4d07f5facc2aed1564e082ec8d4268cfa3b` · **git 미포함 — 수집 방법은 위 note**
+- `bnd_dong_00_2025_2Q.shp` — 135.0 MB, SHA-256 `8f5dec93ce06be03402d24c69b7f4643386945ba291cbc9e0b59b4fee992371d` · **git 미포함 (100MB 초과) — 해시로 대조**
+- `bnd_dong_00_2025_2Q.shx` — 0.0 MB, SHA-256 `b04b98b8807bff242506fb1cad2b9cc38c23e4e855f5fc4a47850a27145e4d6b` · **git 미포함 — 수집 방법은 위 note**
 
 **`volunteer_1365`** — 1365 자원봉사 모집 일감. 서울·강원 전체를 받아 시군구 코드로 대상 지역을 거른다
-- `raw/강원특별자치도_p001.xml` — 0.0 MB, SHA-256 `a4a1f920c7838d1d…`
-- `raw/강원특별자치도_p002.xml` — 0.0 MB, SHA-256 `f4a82d89b491565e…`
-- `raw/강원특별자치도_p003.xml` — 0.0 MB, SHA-256 `74efd95c44728c48…`
-- `raw/서울특별시_p001.xml` — 0.0 MB, SHA-256 `7063ad0f0eba469b…`
-- `raw/서울특별시_p002.xml` — 0.0 MB, SHA-256 `f5437e91298ff284…`
-- `raw/서울특별시_p003.xml` — 0.0 MB, SHA-256 `fea4f3f8c14f8951…`
-- `raw/서울특별시_p004.xml` — 0.0 MB, SHA-256 `022d7ff930ac5b0e…`
-- `raw/서울특별시_p005.xml` — 0.0 MB, SHA-256 `96cb816a0acfbc6f…`
-- `raw/서울특별시_p006.xml` — 0.0 MB, SHA-256 `02bd64042e6632a6…`
-- `raw/서울특별시_p007.xml` — 0.0 MB, SHA-256 `78a3eb39e7f345d0…`
-- `raw/서울특별시_p008.xml` — 0.0 MB, SHA-256 `95a3cd96d3ed3e5a…`
-- `raw/서울특별시_p009.xml` — 0.0 MB, SHA-256 `98f128a9855af15b…`
-- `raw/서울특별시_p010.xml` — 0.0 MB, SHA-256 `337bdec3f1aac850…`
-- `raw/서울특별시_p011.xml` — 0.0 MB, SHA-256 `67d5863fa9c8b30d…`
-- `raw/서울특별시_p012.xml` — 0.0 MB, SHA-256 `d489a2b06bfa23c1…`
-- `raw/서울특별시_p013.xml` — 0.0 MB, SHA-256 `c46621686afb8e45…`
-- `raw/서울특별시_p014.xml` — 0.0 MB, SHA-256 `1cb59af4e0a436e1…`
-- `raw/서울특별시_p015.xml` — 0.0 MB, SHA-256 `370dc973f2c114ba…`
-- `raw/서울특별시_p016.xml` — 0.0 MB, SHA-256 `0d62cbd6bec35e3a…`
-- `raw/서울특별시_p017.xml` — 0.0 MB, SHA-256 `35dbad95e83a1352…`
-- `raw/서울특별시_p018.xml` — 0.0 MB, SHA-256 `80afa4f693587419…`
-- `raw/서울특별시_p019.xml` — 0.0 MB, SHA-256 `244a7a0fa3edb4d8…`
-- `raw/서울특별시_p020.xml` — 0.0 MB, SHA-256 `40fae19bbca744e5…`
-- `raw/서울특별시_p021.xml` — 0.0 MB, SHA-256 `685507d9fa149c16…`
-- `raw/서울특별시_p022.xml` — 0.0 MB, SHA-256 `6cab42e8f3d6df2a…`
-- `raw/서울특별시_p023.xml` — 0.0 MB, SHA-256 `8bcc79cb6f498b72…`
-- `raw/서울특별시_p024.xml` — 0.0 MB, SHA-256 `937b863775bffd3e…`
-- `raw/서울특별시_p025.xml` — 0.0 MB, SHA-256 `2a7c6ba40e5670aa…`
-- `raw/서울특별시_p026.xml` — 0.0 MB, SHA-256 `444b91c577b23e9b…`
-- `raw/서울특별시_p027.xml` — 0.0 MB, SHA-256 `1e1c1433ac6da49d…`
-- `raw/서울특별시_p028.xml` — 0.0 MB, SHA-256 `3133f41cd6c512dc…`
+- `raw/강원특별자치도_p001.xml` — 0.0 MB, SHA-256 `a4a1f920c7838d1d2e71c048e0e5f15b23ad26608b4d09b32956a9b5a8883f66`
+- `raw/강원특별자치도_p002.xml` — 0.0 MB, SHA-256 `f4a82d89b491565e20001bb3a597ad20f38ed8616b6446652e271a9b750c6962`
+- `raw/강원특별자치도_p003.xml` — 0.0 MB, SHA-256 `74efd95c44728c48bf94d6fb3c4cdd886e2437fcbc38fea1eac403b843957614`
+- `raw/서울특별시_p001.xml` — 0.0 MB, SHA-256 `7063ad0f0eba469b051db979e7ef562bbe661aa2ec5fa96b818fea0e9eb942f5`
+- `raw/서울특별시_p002.xml` — 0.0 MB, SHA-256 `f5437e91298ff284240d6002d859eb35d990629579a792808b9b74dd3c0b4b5b`
+- `raw/서울특별시_p003.xml` — 0.0 MB, SHA-256 `fea4f3f8c14f895157b319de2d5e3d73aad9756a72fdf64168c8dd4ba0b2b565`
+- `raw/서울특별시_p004.xml` — 0.0 MB, SHA-256 `022d7ff930ac5b0e2c0d52ea204e4114673cb14b13f666936b4d23ec0fd94095`
+- `raw/서울특별시_p005.xml` — 0.0 MB, SHA-256 `96cb816a0acfbc6f6e9b9362183be2c5dfbe4548e456b58a154d9d145232f8bc`
+- `raw/서울특별시_p006.xml` — 0.0 MB, SHA-256 `02bd64042e6632a64a8b1d8f62b3706aab7e1c777a688d9be49aee2406a7ecfe`
+- `raw/서울특별시_p007.xml` — 0.0 MB, SHA-256 `78a3eb39e7f345d0a2df9a6043d0475a0564508ba62afc22cdb444f8cb52a91c`
+- `raw/서울특별시_p008.xml` — 0.0 MB, SHA-256 `95a3cd96d3ed3e5ae4f0591e10e591d7cb38d8d8e929a107ced3b851d20a1fb2`
+- `raw/서울특별시_p009.xml` — 0.0 MB, SHA-256 `98f128a9855af15b58b2856f7c1ae45bbbed9055aad2e1582abc388335da1c07`
+- `raw/서울특별시_p010.xml` — 0.0 MB, SHA-256 `337bdec3f1aac85029eaac22fa877559296cb5fa00067868a31c068eccbde875`
+- `raw/서울특별시_p011.xml` — 0.0 MB, SHA-256 `67d5863fa9c8b30db2bf164942d2cdc5b811c6f6596315f6d9c86d1291f97a42`
+- `raw/서울특별시_p012.xml` — 0.0 MB, SHA-256 `d489a2b06bfa23c1e2fae2aac76ff3eeb08a40d6ba1ba9e07809da46a1eff98f`
+- `raw/서울특별시_p013.xml` — 0.0 MB, SHA-256 `c46621686afb8e45068cbb54d6bbc3e2748172d9e1ca0e5a269f7c5f31643b96`
+- `raw/서울특별시_p014.xml` — 0.0 MB, SHA-256 `1cb59af4e0a436e174e0049c7e343e18cb9752c24002bfb57be9aa76e342ee00`
+- `raw/서울특별시_p015.xml` — 0.0 MB, SHA-256 `370dc973f2c114ba5cc5c70e6af193a8c30f3cb58bc57be3b46c5d9c6693146a`
+- `raw/서울특별시_p016.xml` — 0.0 MB, SHA-256 `0d62cbd6bec35e3a0f65cca83456dd30480834b1d5be08d1220cf813f6b1e0cc`
+- `raw/서울특별시_p017.xml` — 0.0 MB, SHA-256 `35dbad95e83a1352509427f40896e56db005f1979db848ef8167797ab68459ed`
+- `raw/서울특별시_p018.xml` — 0.0 MB, SHA-256 `80afa4f6935874197dcd659cf1981e11bd5422f737a3e3b09c0a284504898163`
+- `raw/서울특별시_p019.xml` — 0.0 MB, SHA-256 `244a7a0fa3edb4d865be40bae8cb5884f87abcc8b048a56160a4f4914337eea3`
+- `raw/서울특별시_p020.xml` — 0.0 MB, SHA-256 `40fae19bbca744e5fac482133cd47ecf2d902d1f5d6e74996daffe20d83d3083`
+- `raw/서울특별시_p021.xml` — 0.0 MB, SHA-256 `685507d9fa149c16b8d3412b4578faccd6161c2c0795f9dc35aefb8676efdce6`
+- `raw/서울특별시_p022.xml` — 0.0 MB, SHA-256 `6cab42e8f3d6df2aff1c35bba007449f5c33ad583c6d520ca6bc2bc673b691eb`
+- `raw/서울특별시_p023.xml` — 0.0 MB, SHA-256 `8bcc79cb6f498b72d2bed906b789f63babe6bc2de2b16098c4c09b7dbf85bfc1`
+- `raw/서울특별시_p024.xml` — 0.0 MB, SHA-256 `937b863775bffd3e197986151d198a661769e962ecf0302a34f8a2bd00f089eb`
+- `raw/서울특별시_p025.xml` — 0.0 MB, SHA-256 `2a7c6ba40e5670aa3602922e64c807f0337994f1deb5801998ebec5c547d2c5a`
+- `raw/서울특별시_p026.xml` — 0.0 MB, SHA-256 `444b91c577b23e9b26ea8edfc74ababda32c14c79edebdeb161fc35b3e684a3f`
+- `raw/서울특별시_p027.xml` — 0.0 MB, SHA-256 `1e1c1433ac6da49d237e563740233b12375763b92492f917301df06f97aebb23`
+- `raw/서울특별시_p028.xml` — 0.0 MB, SHA-256 `3133f41cd6c512dc94db8ae2f36626fb32bddca611417da81b25048e27eeb2d0`
 
 **`welfare_central`** — 복지로 중앙부처 복지서비스 목록. API 활용신청 후 인증키로 수집
-- `raw/central_p001.xml` — 0.1 MB, SHA-256 `fd9c6cfc9056ed6b…`
-- `raw/central_p002.xml` — 0.1 MB, SHA-256 `c7d945d1a305618b…`
-- `raw/central_p003.xml` — 0.1 MB, SHA-256 `4caba9ec10651d40…`
-- `raw/central_p004.xml` — 0.1 MB, SHA-256 `24c0c3de800dcfc9…`
-- `raw/central_p005.xml` — 0.1 MB, SHA-256 `46709a57247310eb…`
+- `raw/central_p001.xml` — 0.1 MB, SHA-256 `fd9c6cfc9056ed6be8b6bc283d5a96991fe641b7869bd7c9b16cf960bd01a171`
+- `raw/central_p002.xml` — 0.1 MB, SHA-256 `c7d945d1a305618bb88a88acca0eae139306c9dc4ffb0e2adf5a7473c645c535`
+- `raw/central_p003.xml` — 0.1 MB, SHA-256 `4caba9ec10651d40fc52608b3ea649148e48053c3d3009997e213c8e4e8d2cf3`
+- `raw/central_p004.xml` — 0.1 MB, SHA-256 `24c0c3de800dcfc9727b252a45fb888d65615716e0b1381d8dca3f90b9c25f89`
+- `raw/central_p005.xml` — 0.1 MB, SHA-256 `46709a57247310eb75638c374e258b03ae4a307aa2b863be7f68000a7614def7`
 
 **`welfare_local`** — 복지로 지자체 복지서비스. 강남구·춘천시만 조회
-- `raw/강남구_p001.xml` — 0.0 MB, SHA-256 `9d09fd7141546f7d…`
-- `raw/춘천시_p001.xml` — 0.0 MB, SHA-256 `591a51d388aea903…`
+- `raw/강남구_p001.xml` — 0.0 MB, SHA-256 `9d09fd7141546f7d2050d1d3a36c0ee8856e3d1fe8353dbd3870796912696905`
+- `raw/춘천시_p001.xml` — 0.0 MB, SHA-256 `591a51d388aea903fdf64232e20ce859be0e8156d597485145916d23bafa4090`
 
 <!-- END: 자동 생성 -->
