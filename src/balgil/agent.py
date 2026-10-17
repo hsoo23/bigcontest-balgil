@@ -803,7 +803,9 @@ def weekly_briefing(inp: Inputs, as_of: pd.Timestamp, roster: pd.DataFrame | Non
     head = [f"# 주간 브리핑 — {as_of:%Y-%m-%d} 기준 (지난 {WINDOW_DAYS}일 창)",
             f"끊김 {len(broken)}개 집단 (빨강 {sum(st.상태 == '끊김(빨강)' for st in broken)} · 주황 {sum(st.상태 == '끊김(주황)' for st in broken)})"
             + (f", 확인 권고 {n_people}명" if roster is not None else ", 명부 없음 — 교차 생략"),
-            f"좁아짐 {len(narrow)}개 집단·터전 없음 후보 {len(ground)}개 동은 사람이 아니라 동 단위로 나갑니다.", ""]
+            # 좁아짐 수는 90대 뺀 32칸(청년 포함) 기준이라, 화면 ①의 노랑(60대 이상 12칸)과 다르다 — 단위를 같이 적는다(#65 6번)
+            f"좁아짐 상위 {len(narrow)}칸(90대 뺀 32칸 기준, 청년 포함)·터전 없음 후보 {len(ground)}개 동은 "
+            "사람이 아니라 동 단위로 나갑니다.", ""]
     tail = ["", "## 좁아짐 (90대 뺀 32칸 중 상위 7칸)"]
     tail += [f"- {r.seg} (점수 {r.narrow:+.2f}, {r.좁아짐순위}위)" + (" — 청년: 끊김 감시 대상 아님" if r.AGE in ("10대", "20대") else "")
              for r in narrow.itertuples()]
