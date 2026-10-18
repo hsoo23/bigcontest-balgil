@@ -830,7 +830,10 @@ def weekly_briefing(inp: Inputs, as_of: pd.Timestamp, roster: pd.DataFrame | Non
             f"좁아짐 상위 {len(narrow)}칸(90대 뺀 32칸 기준) 중 고령 {n_old}칸과 터전 없음 후보 {len(ground)}개 동은 "
             "사람이 아니라 동 단위로" + (f", 60대 미만 {n_young}칸은 시군구 단위로" if n_young else "") + " 나갑니다.", ""]
     tail = ["", "## 좁아짐 (90대 뺀 32칸 중 상위 7칸)"]
-    tail += [f"- {r.seg} (점수 {r.narrow:+.2f}, {r.좁아짐순위}위)" + (" — 청년: 끊김 감시 대상 아님" if r.AGE in ("10대", "20대") else "")
+    # 60대 미만은 끊김 감시 밖이다. 10대는 청년과 대상·자원이 달라 따로 부른다(기획안 9절, #81 리뷰)
+    young = lambda age: {"10대": "10대", "20대": "청년"}.get(age, "60대 미만")
+    tail += [f"- {r.seg} (점수 {r.narrow:+.2f}, {r.좁아짐순위}위)"
+             + ("" if r.AGE in BREAK_AGES else f" — {young(r.AGE)}: 끊김 감시 대상 아님")
              for r in narrow.itertuples()]
     old_narrow = sorted({r.city for r in narrow.itertuples() if r.AGE in BREAK_AGES})
     for city in old_narrow:  # 고령 좁아짐 칸이 있는 도시만. 청년 좁아짐 자원(온라인 상담·청년참여)은 아직 없다
