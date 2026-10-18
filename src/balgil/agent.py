@@ -819,12 +819,15 @@ def weekly_briefing(inp: Inputs, as_of: pd.Timestamp, roster: pd.DataFrame | Non
     blocks = [draft_outreach(st, wk.people.get(st.집단), inp.volunteer_date) for st in broken]
     narrow, ground = narrow_cells(inp), ground_alerts(inp)
     n_people = sum(len(p) for p in wk.people.values())
+    n_old = int(narrow["AGE"].isin(BREAK_AGES).sum())
+    n_young = len(narrow) - n_old
     head = [f"# 주간 브리핑 — {as_of:%Y-%m-%d} 기준 (지난 {WINDOW_DAYS}일 창)",
             f"끊김 {len(broken)}개 집단 (빨강 {sum(st.상태 == '끊김(빨강)' for st in broken)} · 주황 {sum(st.상태 == '끊김(주황)' for st in broken)})"
             + (f", 확인 권고 {n_people}명" if roster is not None else ", 명부 없음 — 교차 생략"),
             # 좁아짐 수는 90대 뺀 32칸(청년 포함) 기준이라, 화면 ①의 노랑(60대 이상 12칸)과 다르다 — 단위를 같이 적는다(#65 6번)
-            f"좁아짐 상위 {len(narrow)}칸(90대 뺀 32칸 기준, 청년 포함)·터전 없음 후보 {len(ground)}개 동은 "
-            "사람이 아니라 동 단위로 나갑니다.", ""]
+            # 60대 미만 칸은 동을 말하지 않는다 — 카드는 시군구까지이고 청년 자원도 시 단위다(기획안 3절·9절, #76 리뷰)
+            f"좁아짐 상위 {len(narrow)}칸(90대 뺀 32칸 기준) 중 고령 {n_old}칸과 터전 없음 후보 {len(ground)}개 동은 "
+            "사람이 아니라 동 단위로" + (f", 60대 미만 {n_young}칸은 시군구 단위로" if n_young else "") + " 나갑니다.", ""]
     tail = ["", "## 좁아짐 (90대 뺀 32칸 중 상위 7칸)"]
     tail += [f"- {r.seg} (점수 {r.narrow:+.2f}, {r.좁아짐순위}위)" + (" — 청년: 끊김 감시 대상 아님" if r.AGE in ("10대", "20대") else "")
              for r in narrow.itertuples()]
