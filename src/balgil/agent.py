@@ -523,7 +523,8 @@ def place_candidates(places: pd.DataFrame, adm_cd: str, kind: str, industries: l
 
 
 def _place_label(r) -> str:
-    tag = r["업종"] if r["종류"] == "가게" else r["종류"]
+    # 화면 ① app/balgil_app.py _short_places가 이 모양(「이름 (업종 · 지정)」)을 읽어 줄인다(#77). 바꾸면 거기도 본다
+    tag =r["업종"] if r["종류"] == "가게" else r["종류"]
     return f"{r['이름']} ({tag}{' · 지정' if r['게이트키퍼'] == 'Y' else ''})"
 
 
