@@ -38,22 +38,26 @@ DEFAULT = sorted((ROOT / "docs" / "draft").glob("*.md"))
 
 UNIT = r"%|배|건|명|일|개|곳|칸|동|회|주|쪽"
 NUM = r"−?-?\d+(?:,\d{3})*(?:\.\d+)?"
+# 경계는 \b 대신 앞뒤 글자를 직접 본다. 한글도 \w 라서 \b 를 쓰면 「14건의」「5.7건을」이 안 잡힌다.
+# 앞은 「후평3동」「V030」 같은 이름 속 숫자를 막고, 뒤의 (?!월)은 「6개월」을 「6개」로 세지 않게 한다.
+# 10/16에 만든 판은 \b 자리에 백스페이스 문자(\x08)가 들어가 단위 붙은 숫자를 하나도 못 잡았다 —
+# 그래서 아래 SELFTEST 로 매번 확인한다
 PATTERNS = [
-    re.compile(rf"{NUM}\s*(?:{UNIT})"),        # 44건, 1.80배, 58.7%
+    re.compile(rf"(?<![\w.]){NUM}\s*(?:{UNIT})(?!월)"),        # 44건, 1.80배, 58.7%
     re.compile(rf"{NUM}\s+/\s+{NUM}"),           # 12 / 12
-    re.compile(rf"\d{{2,}}\s*/\s*\d{{2,}}"),  # 18/31, 47/47 (날짜와 겹치지 않는 꼴)
+    re.compile(rf"(?<![\w/.])\d{{2,}}\s*/\s*\d{{2,}}(?![\w/.])"),  # 18/31, 47/47 (날짜와 겹치지 않는 꼴)
     re.compile(rf"ρ\s*=?\s*{NUM}"),              # ρ -0.79
 ]
 DECIMALS = re.compile(rf"(?<![.\d]){NUM}\.\d+(?![.\d])")  # --decimals 로만 켠다
 
 # 세는 뜻이 없는 것 — 날짜·이슈 번호·연도·커밋 해시·절 번호
 DROP_IN_LINE = [
-    re.compile(r"\d{4}-\d{2}(?:-\d{2})?"),   # 2025-10-12
-    re.compile(r"\d{1,2}/\d{1,2}(?!\s*\d)"),  # 10/17 같은 날짜
+    re.compile(r"(?<!\d)\d{4}-\d{2}(?:-\d{2})?(?!\d)"),   # 2025-10-12
+    re.compile(r"(?<![\d/])(?:1[0-2]|0?[1-9])/(?:[12]\d|3[01]|0?[1-9])(?![\d/])(?!\s*\d)"),  # 10/17 같은 날짜
     re.compile(r"#\d+"),                            # #49
-    re.compile(r"\d{4}년"),
-    re.compile(r"[0-9a-f]{7,40}"),              # 커밋 해시
-    re.compile(r"\d+(?:\.\d+)+\s*(?:절|장|항)"),  # 9.1절, 4.3절
+    re.compile(r"(?<!\d)\d{4}년"),
+    re.compile(r"(?<![0-9A-Za-z])[0-9a-f]{7,40}(?![0-9A-Za-z])"),              # 커밋 해시
+    re.compile(r"(?<![\d.])\d+(?:\.\d+)+\s*(?:절|장|항)"),  # 9.1절, 4.3절
     re.compile(r"(?:절|장|항)\s*\d+(?:\.\d+)+"),
 ]
 SKIP_LINE = re.compile(r"^\s*(?:#|>?\s*\*\*담당|\|\s*---|```|-\s*\*\*담당)")
@@ -73,6 +77,11 @@ ALLOW = {
     "100MB": "GitHub 한도 — 규정 밖 사실",
     "47 / 47": "행안부 코드 연결 커버리지 — 03절·external_data.md",
 }
+
+
+# 「0개」가 「다 맞다」인지 「하나도 못 읽었다」인지 가르는 문장. 날짜·이름 속 숫자·「개월」은 빠져야 한다
+SELFTEST = "2025-10-12 기준 14건의 끊김, 58.7%, 1.80배, 18/31, 12 / 12, ρ −0.79. 후평3동, 6개월, 10/17."
+SELFTEST_WANT = {"14건", "58.7%", "1.80배", "18/31", "12 / 12", "ρ −0.79"}
 
 
 def numbers(text: str, decimals: bool = False) -> set[str]:
@@ -119,6 +128,9 @@ def main() -> None:
     ap.add_argument("--decimals", action="store_true", help="단위 없는 소수(0.347 등)도 본다. 절 번호가 섞여 시끄럽다")
     a = ap.parse_args()
 
+    got = numbers(SELFTEST)
+    if got != SELFTEST_WANT:
+        sys.exit(f"숫자 찾기가 고장났습니다 — {sorted(SELFTEST_WANT)} 를 기대했는데 {sorted(got)}")
     if not TABLE.exists():
         sys.exit(f"수치표가 없습니다: {TABLE}")
     table_text = TABLE.read_text(encoding="utf-8")
