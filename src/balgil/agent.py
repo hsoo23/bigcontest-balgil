@@ -106,6 +106,12 @@ def load_inputs() -> Inputs:
         dong["SGG_NM"] = dong["도시"].map(CITY_SGG)
     dong["ADM_CD"] = dong["ADM_CD"].astype(str)
     src = {"segment": p_seg, "segment_month": p_mon, "breaks": p_brk, "dong": p_dong}
+    # 원본이 없는 팀원도 돌리게 하는 대체 경로라 멈추지 않는다. 다만 reference CSV는 넷째 자리 반올림이라
+    # 둘째 자리 경계의 값이 0.01 갈린다 — 이걸로 화면 표를 만들어 올리면 전체 파이프라인과 달라진다(#75)
+    rounded = [p.name for p in (p_seg, p_mon, p_dong) if p.suffix == ".csv"]
+    if rounded:
+        print(f"[경고] parquet이 없어 반올림된 reference CSV를 읽습니다 ({' · '.join(rounded)}). "
+              "화면 표(data/reference/app/)를 만들어 올릴 때는 전체 파이프라인을 먼저 돌리세요")
     opt = {}
     for key, name in [("industry", "segment_industry.parquet"), ("dong_stores", "dong_industry_stores.parquet"),
                       ("facilities", "fac_dong.parquet")]:
