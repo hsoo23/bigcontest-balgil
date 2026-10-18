@@ -11,6 +11,7 @@
   agent_summary.csv  D1 agent.py briefing_tables()를 매주 일요일 기준으로 돌린 요약 (화면 ①)
   agent_groups.csv   같은 표의 12집단 × 주 신호·끊김 종류·상대방 업종 (화면 ①)
   agent_people.csv   같은 표의 확인 권고 대상자 × 주 — 가상 명부(data/synthetic/roster_가상.csv, D4)를 넣어 돌린 것
+                     장소 표(places_가상.csv)가 있으면 대상자마다 본인 등록 장소 또는 그 동의 후보 장소가 붙는다(#59)
                      상대방 업종은 segment_industry(git 제외)가 있어야 채워진다 → 원본이 있는 PC에서 만든다
 
 선행: build_spatial.py → build_dong_panel.py → build_facility.py (터전 값은 build_ground.build()를 그대로 쓴다),
@@ -39,6 +40,7 @@ from build_spatial import load_dong  # noqa: E402
 OUT = ROOT / "data" / "reference" / "app"
 REF = ROOT / "reanalysis" / "reference"
 ROSTER = ROOT / "data" / "synthetic" / "roster_가상.csv"  # D4 가상 명부 (build_synthetic.py)
+PLACES = ROOT / "data" / "synthetic" / "places_가상.csv"  # D4 장소 표 (같은 스크립트)
 SIMPLIFY_M = 30  # 경계 단순화 허용 오차(m). 화면 축척에서 티가 나지 않고 파일이 작아진다
 
 # 재분석 b3_models.py 모델 ①과 같은 변수·설정 (90대 제외 32칸, y가 있는 주만)
@@ -121,8 +123,9 @@ def shap_weekly() -> None:
 
 def agent_weekly() -> None:
     """화면 ①의 주(월~일)와 agent.py의 7일 창이 같아지도록 일요일을 기준일로 잡는다.
-    대상자 표(agent_people)는 가상 명부(D4)로 만든다. 명부가 없으면 집단 표만 만든다."""
-    from balgil.agent import WINDOW_DAYS, briefing_tables, load_inputs, read_roster
+    대상자 표(agent_people)는 가상 명부(D4)로 만든다. 명부가 없으면 집단 표만 만든다.
+    장소 표도 있으면 대상자 표에 등록장소·후보장소 두 열이 붙는다(화면 ① 「물어볼 장소」). 집단 표는 그대로다."""
+    from balgil.agent import WINDOW_DAYS, briefing_tables, load_inputs, read_places, read_roster
 
     inp = load_inputs()
     first, last = pd.Timestamp(inp.breaks["date"].min()), pd.Timestamp(inp.breaks["date"].max())
@@ -130,9 +133,10 @@ def agent_weekly() -> None:
     days = pd.date_range(first + pd.Timedelta(days=2 * WINDOW_DAYS - 1), last, freq="W-SUN")
     # 명부를 첫 기준일로 한 번 읽는다. 그보다 늦은 접촉일은 경고만 나고, 기준일마다 그날까지의 접촉만 교차에 든다(#48)
     roster = read_roster(ROSTER, inp, days[0]) if ROSTER.exists() else None
+    places = read_places(PLACES, inp) if roster is not None and PLACES.exists() else None
     summary, groups, people = [], [], []
     for as_of in days:
-        t = briefing_tables(inp, as_of, roster)
+        t = briefing_tables(inp, as_of, roster, places=places)
         summary.append(t["agent_summary"])
         groups.append(t["agent_groups"])
         people.append(t["agent_people"].assign(기준일=as_of.date()))
@@ -151,7 +155,8 @@ def agent_weekly() -> None:
         pp = pp.merge(note, on="대상자ID", how="left", validate="many_to_one")
         assert pp["비고"].str.startswith("가상").all(), "가상 표기가 빠진 대상자 행이 있습니다"
         pp.to_csv(OUT / "agent_people.csv", index=False, encoding="utf-8-sig", lineterminator="\n")
-        print(f"agent_people.csv: 확인 권고 {len(pp)}행 (가상 명부 {len(roster)}명, 대상자 {pp['대상자ID'].nunique()}명이 한 번 이상)")
+        print(f"agent_people.csv: 확인 권고 {len(pp)}행 (가상 명부 {len(roster)}명, 대상자 {pp['대상자ID'].nunique()}명이 한 번 이상)"
+              + (f", 장소 표 {len(places)}곳 — 본인 등록 {int((pp['등록장소'] != '').sum())}행" if places is not None else ", 장소 표 없음"))
     else:
         print(f"  [주의] {ROSTER.relative_to(ROOT)} 없음 — 대상자 표를 만들지 않았습니다 (build_synthetic.py)")
     if inp.industry is None:

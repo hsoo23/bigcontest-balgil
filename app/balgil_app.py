@@ -118,7 +118,13 @@ def load_agent() -> tuple[pd.DataFrame, pd.DataFrame]:
 def load_people() -> pd.DataFrame | None:
     """확인 권고 대상자 × 주. 가상 명부(D4, data/synthetic/roster_가상.csv)를 넣어 돌린 agent.py 표다."""
     path = APP / "agent_people.csv"
-    return pd.read_csv(path, parse_dates=["기준일"], dtype={"행정동코드": str}) if path.exists() else None
+    if not path.exists():
+        return None
+    pp = pd.read_csv(path, parse_dates=["기준일"], dtype={"행정동코드": str})
+    for c in ("등록장소", "후보장소"):  # 장소 표(D4, #59)를 넣어 만든 표에만 있다. 예전 표는 열이 없다
+        if c in pp:
+            pp[c] = pp[c].fillna("")
+    return pp
 
 
 @st.cache_data
@@ -240,6 +246,14 @@ def screen_briefing():
 N_DONG = {"강남": 22, "춘천": 25}  # 터전 순위의 분모 (도시 안 동 수)
 
 
+def _short_places(text: str, dong: str) -> str:
+    """agent.py 장소 글(「(가상) 교동 한식 1 (한식 · 지정) · …」)을 표 칸에 맞게 줄인다. 가상 가게는 「(가상) 동 」 머리와
+    이름에 이미 든 업종 꼬리를 떼고(「한식 1」), 경로당·마을회관은 실제 이름이라 그대로 둔다. 가상 표기는 열 제목·설명에 있다."""
+    def short(m: re.Match) -> str:
+        return m.group(1) if m.group(1).startswith(m.group(2)) else m.group(0)
+    return re.sub(r"\(가상\) (?:" + re.escape(dong) + r" )?([^()]+?) \(([^()·]+?)(?: · 지정)?\)", short, text)
+
+
 def people_table(as_of: pd.Timestamp, g: pd.DataFrame):
     """끊긴 칸 × 가상 명부 → 이번 주 먼저 확인할 사람 (기획안 4절 0단계). 칸은 시군구 × 성 × 연령대이고,
     동은 대상자 주소에서만 붙인다. 이름·연락처는 표에도 없다(E6 4절)."""
@@ -256,6 +270,7 @@ def people_table(as_of: pd.Timestamp, g: pd.DataFrame):
         return
     order = g.set_index("집단")["신호"].map(SIGNAL_ORDER)
     p = p.assign(_o=p["집단"].map(order)).sort_values(["_o", "집단", "경과일"], ascending=[True, True, False])
+    has_place = "후보장소" in p
     rows = []
     for _, r in p.iterrows():
         city = r["집단"].split()[0]
@@ -265,17 +280,25 @@ def people_table(as_of: pd.Timestamp, g: pd.DataFrame):
             "신호": ui.badge(label.split(" · ")[0], color),
             "집단 (칸 인원)": ui.esc(r["집단"]) + (f" <span style='color:{ui.MUTE}'>({int(n)}명 중)</span>" if pd.notna(n) else ""),
             "대상자": ui.esc(r["대상자ID"]) + f" <span style='color:{ui.MUTE}'>{ui.esc(r['명부종류'])}</span>",
-            "마지막 접촉": f"{int(r['경과일'])}일 전",
+            "마지막 접촉": f"<span style='white-space:nowrap'>{int(r['경과일'])}일 전</span>",  # 열이 하나 늘어 좁아져도 「121일 전」이 두 줄로 깨지지 않게
             "주소 동 · 터전 약한 순": f"{ui.esc(r['행정동'])} · {int(r['터전순위'])}/{N_DONG.get(city, '')}",
             "먼저 물을 창구": ui.esc(r["창구"]),
             "물어볼 곳 (후보 수)": ui.esc(re.sub(r"^(가게|경로당·마을회관) 먼저 — ", "", r["물어볼곳"])),
+            # 본인이 등록한 곳이 있으면 그곳 하나, 없으면 그 동의 후보 (agent.py place_candidates)
+            "물어볼 장소 (가상 가게)": (f"<b>본인 등록</b> {ui.esc(_short_places(r['등록장소'], r['행정동']))}" if r["등록장소"]
+                                     else f"<span style='color:{ui.MUTE}'>후보</span> {ui.esc(_short_places(r['후보장소'], r['행정동']))}")
+            if has_place else "",
         })
-    html(ui.table([("신호", ""), ("집단 (칸 인원)", ""), ("대상자", ""), ("마지막 접촉", "n"),
-                   ("주소 동 · 터전 약한 순", ""), ("먼저 물을 창구", ""), ("물어볼 곳 (후보 수)", "m")], rows))
+    cols = [("신호", ""), ("집단 (칸 인원)", ""), ("대상자", ""), ("마지막 접촉", "n"),
+            ("주소 동 · 터전 약한 순", ""), ("먼저 물을 창구", ""), ("물어볼 곳 (후보 수)", "m")]
+    html(ui.table(cols + ([("물어볼 장소 (가상 가게)", "m")] if has_place else []), rows))
     st.caption("대상자·주소·접촉일은 모두 가상입니다(scripts/build_synthetic.py, 생성 방식은 E5 설계자료). "
                "발길 신호는 집단 단위이고, 동은 대상자 주소에서만 붙여 터전과 창구를 고릅니다 — 카드 지표를 동에 붙이지 않습니다. "
                "창구는 그 동의 상대방 업종 가게가 경로당·마을회관의 3배가 안 되면 경로당·마을회관을 먼저 묻습니다(3배, #49에서 정함). "
-               "후보 수는 상가·시설 공개 자료의 개수이고, 실제로 다니던 곳은 본인 등록으로만 받습니다.")
+               "후보 수는 상가·시설 공개 자료의 개수이고, 실제로 다니던 곳은 본인 등록으로만 받습니다. "
+               "「물어볼 장소」는 가상 장소 표(places_가상.csv)에서 고른 것입니다 — 본인이 등록한 곳이 있으면 그곳, "
+               "없으면 그 동의 게이트키퍼 지정 가게를 업종마다 한 곳씩 먼저 4곳까지(창구가 경로당이면 그 동의 경로당·마을회관). "
+               "가게는 이름까지 가상이라 「한식 1」처럼 업종과 번호만 보이고, 경로당·마을회관은 실제 공공시설 이름입니다.")
 
 
 def resource_lines(g: pd.DataFrame):
