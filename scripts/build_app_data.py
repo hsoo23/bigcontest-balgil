@@ -15,6 +15,8 @@
 
 선행: build_spatial.py → build_dong_panel.py → build_facility.py (터전 값은 build_ground.build()를 그대로 쓴다),
       agent 표는 build_segment_industry.py, 대상자 표는 build_synthetic.py(가상 명부)
+      agent 표는 전체 파이프라인 뒤에 만든다 — features_segment 등 parquet이 없으면 agent.py가 반올림된
+      reference CSV로 내려가 값이 0.01 갈린다([경고] 한 줄이 뜬다, #75)
       SHAP은 reanalysis/a0_load_clean.py 산출(card*.pkl)로 b3 패널을 반올림 없이 다시 만들어 쓴다
 실행: python scripts/build_app_data.py [--only map|shap|agent]  (requirements.txt 고정 버전: scikit-learn 1.7.2, shap 0.48.0)
 주의: 같은 버전이어도 macOS arm64에서는 b3 랜덤포레스트가 reference/model_score.csv와 조금 다르게 나온다
