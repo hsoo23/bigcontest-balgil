@@ -10,6 +10,9 @@
          표 줄은 보지 않는다 — AUC·SHAP·상관·비율은 셋째 자리가 뜻을 가진다
   물결표 한 줄에 이스케이프 안 된 ~ 가 둘 이상인가 (취소선으로 그려진다)
 
+물결표 검사는 역슬래시를 세는 코드라 셸을 거치며 다치면 조용히 통과한다 — check_numbers 가
+같은 자리에서 한 번 그랬다(#85). 그래서 실행마다 SELFTEST 로 확인하고 틀리면 바로 멈춘다.
+
 한계
   코드 블록·표 구분선·링크 주소는 건너뛴다. 용어는 인용 안에서도 걸린다 —
   "위험군"을 인용해 비판하는 문장은 일부러 쓴 것이므로 사람이 보고 넘긴다.
@@ -21,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -75,6 +79,29 @@ def loose_tildes(line: str) -> int:
                if ch == "~" and (i == 0 or line[i - 1] != BACKSLASH))
 
 
+# 일부러 쓴 취소선(~~…~~)만 지우고 센다. 줄을 통째로 건너뛰면 같은 줄에 있는 범위를 놓친다(수경 #70 리뷰).
+# 취소선 안에 이스케이프한 물결표가 올 수 있어(~~① \~④ 재실행~~) 그 자리를 넘어가도록 받는다 —
+# [^~]* 만 쓰면 취소선이 안 지워지고 남은 ~ 다섯 개가 경고로 뜬다
+STRIKE = re.compile(r"~~(?:\\~|[^~])*~~")
+
+# 이 파일도 역슬래시를 세는 코드다 — check_numbers 의 \b 가 백스페이스로 바뀌어 아무것도 못 잡던 사고(#85)와
+# 같은 자리다. 셸을 거치며 역슬래시가 다치면 물결표 검사가 조용히 통과한다. 그래서 매번 확인한다.
+SELFTEST = [
+    ("0.51~0.64 와 0.73~0.82", 2),                 # 그냥 쓴 물결표 둘 → 잡아야 한다
+    ("0.51\\~0.64 와 0.73\\~0.82", 0),           # 이스케이프했으면 넘긴다
+    ("~~① \\~④ 재실행~~ 뒤 한 줄", 0),              # 취소선 안의 이스케이프 물결표
+    ("~~끝난 일~~ 그리고 0.1~0.2 와 0.3~0.4", 2),     # 취소선은 지우고 바깥 범위는 잡는다
+]
+
+
+def selftest() -> None:
+    """물결표 검사가 살아 있는지 본다. 틀리면 바로 멈춘다 — 「0건」이 「다 맞다」여야 한다."""
+    for line, want in SELFTEST:
+        got = loose_tildes(STRIKE.sub("", line))
+        if got != want:
+            sys.exit(f"물결표 검사가 고장났습니다 — {line!r} 에서 {want} 를 기대했는데 {got}")
+
+
 def show(path: Path) -> str:
     """저장소 안이면 상대경로, 밖이면 그대로. --files 로 바깥 파일을 줄 수 있다."""
     try:
@@ -98,8 +125,7 @@ def scan(path: Path, decimals: bool = False) -> list[str]:
         # 「」는 빼지 않는다 — draft 가 강조로 많이 쓰고, 그 안에 금지어를 그냥 쓰면 잡아야 한다(수경 #70 리뷰).
         # 규칙을 적은 문서 셋은 위에서 통째로 빼므로 「」를 봐도 시끄러워지지 않는다
         quoted = re.sub(r"[\"“”][^\"“”]*[\"“”]", "", body)
-        # 일부러 쓴 취소선(~~…~~)만 지우고 센다. 줄을 통째로 건너뛰면 같은 줄에 있는 범위를 놓친다(수경 #70 리뷰)
-        if loose_tildes(re.sub(r"~~[^~]*~~", "", body)) >= 2:
+        if loose_tildes(STRIKE.sub("", body)) >= 2:
             out.append(f"  {i:>4}  물결표  ~ 가 둘 이상 — 취소선으로 그려집니다. `{BACKSLASH}~` 로 이스케이프")
         for bad, good in BANNED.items():
             if bad not in quoted:
@@ -126,6 +152,7 @@ def scan(path: Path, decimals: bool = False) -> list[str]:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    selftest()
     ap.add_argument("--files", nargs="*", type=Path, default=None)
     ap.add_argument("--decimals", action="store_true",
                     help="본문 소수 셋째 자리도 본다. AUC·비율이 본문에 나와 시끄러울 수 있다")
