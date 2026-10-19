@@ -123,7 +123,8 @@ python scripts/capture_screens.py            # → reports/screens/screen1~4.png
 ```bash
 python scripts/explore_quality.py     # 질 지표 검증 10종 (지표 교체 근거)
 python scripts/explore_external.py    # 외부 데이터 해상도, 점포 버그, 계절성
-python scripts/explore_signals.py     # 기존 인용 수치 재현
+python scripts/explore_signals.py     # 옛 질 지표(대면/익명 반복) 시기의 인용 수치 재현 — 지금은 쓰지 않음
+python scripts/explore_plan_appendix.py  # 기획안 2절·12절(부록)의 양·질·연속성·통신 값
 ```
 
 ## 노션 공유
