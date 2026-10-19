@@ -58,7 +58,11 @@ def main() -> None:
         print(f"  {ev_name}: 격월 {x['격월']}일 → 주간 {x['주간']}일, {x['격월'] - x['주간']:.1f}일 빠름, {x['격월'] / x['주간']:.1f}배")
 
     # 탐색일이 오기 전에 이미 끊김이 끝나는가 (끊김 지속 일수 < 지연). 탐색 요일·달마다 세고 평균
-    print(f"\n■ 실제 끊김 {len(br)}건 중 탐색일 전에 이미 끝난 것 (끊김 지속 중앙값 {br['일수'].median():.0f}일)")
+    # 중앙값이 2.5 라 .0f 로 찍으면 파이썬이 짝수 쪽으로 버려 「2」가 된다(한때 문서 여섯 곳이 그 값을 썼다).
+    # 소수를 그대로 찍고, 본문에는 반올림이 필요 없는 「절반이 2일 이하」를 쓴다
+    half = int((br["일수"] <= 2).sum())
+    print(f"\n■ 실제 끊김 {len(br)}건 중 탐색일 전에 이미 끝난 것 "
+          f"(끊김 지속 중앙값 {br['일수'].median():.1f}일 · {len(br)}건 중 {half}건이 2일 이하)")
     for name, variants in schedules().items():
         gone = [int((br["일수"] < delay(br["시작"], runs)).sum()) for runs in variants]
         print(f"  {name}: 평균 {sum(gone) / len(gone):.1f}건 (경우별 {gone})")
