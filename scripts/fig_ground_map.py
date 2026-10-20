@@ -81,7 +81,7 @@ def area(ring: list[list[float]]) -> float:
     return abs(sum(x0 * y1 - x1 * y0 for (x0, y0), (x1, y1) in zip(ring, ring[1:] + ring[:1]))) / 2
 
 
-def draw_city(ax, feats: list[dict], fac: pd.DataFrame, pri: pd.DataFrame, title: str) -> None:
+def draw_city(ax, feats: list[dict], fac: pd.DataFrame, pri: pd.DataFrame) -> str:
     xs, ys = [], []
     for f in feats:
         q = pri.loc[f["properties"]["ADM_CD"], "사분면"]
@@ -109,9 +109,7 @@ def draw_city(ax, feats: list[dict], fac: pd.DataFrame, pri: pd.DataFrame, title
     ax.set_aspect(1 / math.cos(math.radians((min(ys) + max(ys)) / 2)))
     ax.set_axis_off()
     n = pri.loc[[f["properties"]["ADM_CD"] for f in feats], "사분면"].value_counts()
-    ax.set_title(title, loc="left", fontsize=15, color=INK, fontweight="bold", pad=30)
-    ax.text(0, 1.012, " · ".join(f"{QUAD[k][1].split(' · ')[0]} {n.get(k, 0)}곳" for k in QUAD),
-            transform=ax.transAxes, fontsize=10.5, color=INK_2, va="bottom", ha="left")
+    return " · ".join(f"{QUAD[k][1].split(' · ')[0]} {n.get(k, 0)}곳" for k in QUAD)
 
 
 def main() -> None:
@@ -125,10 +123,20 @@ def main() -> None:
 
     fig = plt.figure(figsize=(12.8, 7.2), facecolor=SURFACE)
     boxes = [(0.02, 0.12, 0.55, 0.64), (0.60, 0.12, 0.38, 0.64)]   # 춘천이 넓어 왼쪽을 크게
+    panels = []
     for (city, sgg), box in zip(CITIES, boxes):
         feats = [f for f in geo if f["properties"]["도시"] == city]
         ax = fig.add_axes(box)
-        draw_city(ax, feats, fac[fac["SGG_NM"] == sgg], pri, f"{city} {len(feats)}개 동")
+        panels.append((ax, f"{city} {len(feats)}개 동", draw_city(ax, feats, fac[fac["SGG_NM"] == sgg], pri)))
+
+    # 가로세로 비를 맞추면 두 지도의 실제 높이가 달라진다 — 제목은 축 대신 그림 좌표에서 같은 줄에 둔다
+    for ax, _, _ in panels:
+        ax.apply_aspect()
+    top = max(ax.get_position().y1 for ax, _, _ in panels)
+    for ax, title, counts in panels:
+        x0 = ax.get_position().x0
+        fig.text(x0, top + 0.055, title, fontsize=15, color=INK, fontweight="bold", va="bottom")
+        fig.text(x0, top + 0.015, counts, fontsize=10.5, color=INK_2, va="bottom")
 
     fig.text(0.02, 0.955, "발길 닿을 곳은 동네마다 다릅니다 — 공급 × 필요로 자원을 둘 동을 고릅니다",
              fontsize=17, color=INK, fontweight="bold", va="top")
@@ -137,8 +145,8 @@ def main() -> None:
                 Line2D([], [], ls="", marker="o", ms=7, mfc=INK, mec="#ffffff", label="도서관")]
     fig.legend(handles=handles, loc="lower left", bbox_to_anchor=(0.02, 0.005), ncol=3, frameon=False,
                fontsize=10.5, handlelength=1.4, columnspacing=1.8, labelcolor=INK_2)
-    fig.text(0.02, 0.905, "공급 = 도시 안 통신 터전순위 하위 절반 · 필요 = 고령 1인세대가 도시 중앙값 이상.  "
-             "색은 동 단위 공급입니다 — 카드 지표(양·질·끊김)는 시군구까지라 동에 칠하지 않습니다",
+    fig.text(0.02, 0.905, "공급 부족 = 도시 안 통신 터전 약한 절반 · 필요 큼 = 고령 1인세대 수가 도시 중앙값 이상.  "
+             "색은 동 단위 값(공급 × 필요)입니다 — 카드 지표(양·질·끊김)는 시군구까지라 동에 칠하지 않습니다",
              fontsize=10, color=MUTED, va="top")
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
