@@ -8,7 +8,12 @@
 (발표 5장 주석). 점은 경로당·마을회관(속 빈 점)과 도서관(채운 점)이고, 대응 색과 겹치지 않게 먹색이다.
 
 **글자는 고른 동에만 붙인다.** 「1순위 · 거점 배치」 동과, 5장 본문이 사례로 드는 북산면이다.
+북산면은 1순위가 아니라 형평 칸이라 이름표 테두리를 그 칸 색으로 두고 「(형평)」을 붙인다 —
+아홉 개 1순위 이름표와 모양이 같으면 열 번째도 1순위로 읽힌다(#101 윤지 리뷰).
 색만으로 말하지 않도록 범례에 칸 이름과 정의를 함께 적는다.
+
+**춘천 도심은 따로 키운다.** 연결 10곳 · 유지 3곳이 거의 다 소양동 둘레의 작은 동이라, 전체 지도에서는
+초록 · 회색이 경로당 점에 덮여 춘천이 「형평 + 1순위」로만 읽힌다. 비어 있는 오른쪽 아래에 도심 확대를 둔다.
 
 입력: data/reference/app/dong_map.geojson · facilities.csv · data/reference/dong_priority.csv
       (전부 저장소에 있음 — 원본 없이, geopandas 없이 그려진다)
@@ -31,7 +36,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 import pandas as pd  # noqa: E402
 from matplotlib import font_manager as fm  # noqa: E402
 from matplotlib.lines import Line2D  # noqa: E402
-from matplotlib.patches import Patch, Polygon  # noqa: E402
+from matplotlib.patches import Patch, Polygon, Rectangle  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 GEO = ROOT / "data" / "reference" / "app" / "dong_map.geojson"
@@ -50,6 +55,9 @@ QUAD = {
 CASE = {"북산면"}       # 5장 본문이 사례로 드는 동 — 1순위가 아니어도 이름을 붙인다
 # 이웃한 작은 동은 무게중심에 그대로 두면 글자가 겹친다 — 점(pt) 단위로 비켜 놓는다
 NUDGE = {"역삼1동": (-16, 9), "역삼2동": (14, -10)}
+# 춘천 도심 확대 범위(경도, 위도)와 그것을 놓을 자리(춘천 축 기준 비율) — 연결 · 유지 동이 모두 들어간다
+ZOOM = ((127.708, 127.768), (37.859, 37.902))
+ZOOM_AT = (0.665, 0.0, 0.36, 0.40)
 CITIES = [("춘천", "강원 춘천시"), ("강남", "서울 강남구")]
 
 
@@ -81,7 +89,8 @@ def area(ring: list[list[float]]) -> float:
     return abs(sum(x0 * y1 - x1 * y0 for (x0, y0), (x1, y1) in zip(ring, ring[1:] + ring[:1]))) / 2
 
 
-def draw_city(ax, feats: list[dict], fac: pd.DataFrame, pri: pd.DataFrame) -> str:
+def paint(ax, feats: list[dict], fac: pd.DataFrame, pri: pd.DataFrame, k: float = 1.0) -> tuple[list, list]:
+    """동 색과 시설 점. k는 점 크기 배율(확대 그림에서 키운다)."""
     xs, ys = [], []
     for f in feats:
         q = pri.loc[f["properties"]["ADM_CD"], "사분면"]
@@ -91,18 +100,57 @@ def draw_city(ax, feats: list[dict], fac: pd.DataFrame, pri: pd.DataFrame) -> st
 
     # 경로당은 많아서 속 빈 점(지도를 덮지 않게), 도서관은 적어서 채운 점
     s = fac[fac["시설종류"] == "경로당"]
-    ax.scatter(s["경도"], s["위도"], s=9, facecolor="#ffffff", edgecolor=INK, lw=0.6, zorder=3)
+    ax.scatter(s["경도"], s["위도"], s=9 * k, facecolor="#ffffff", edgecolor=INK, lw=0.6, zorder=3)
     s = fac[fac["시설종류"] == "도서관"]
-    ax.scatter(s["경도"], s["위도"], s=26, facecolor=INK, edgecolor="#ffffff", lw=0.9, zorder=4)
+    ax.scatter(s["경도"], s["위도"], s=26 * k, facecolor=INK, edgecolor="#ffffff", lw=0.9, zorder=4)
+    return xs, ys
 
+
+def label(ax, f: dict, q: str, fontsize: float = 10.5) -> None:
+    nm = f["properties"]["ADM_NM"]
+    x, y = centroid(max(rings(f["geometry"]), key=area))
+    case = q != "1순위"   # CASE 동 — 1순위 이름표와 모양을 달리한다
+    ax.annotate(f"{nm} ({q})" if case else nm, (x, y), xytext=NUDGE.get(nm, (0, 0)),
+                textcoords="offset points", ha="center", va="center", fontsize=fontsize, color=INK,
+                fontweight="bold", zorder=5,
+                bbox=dict(boxstyle="round,pad=0.22", fc=SURFACE, alpha=0.92,
+                          ec=QUAD[q][0] if case else "none", lw=1.6 if case else 0))
+
+
+def zoom_inset(ax, feats: list[dict], fac: pd.DataFrame, pri: pd.DataFrame) -> None:
+    """춘천 도심 확대. 전체 지도 위에 범위 상자를 두고, 비어 있는 오른쪽 아래에 키운 그림을 놓는다."""
+    (x0, x1), (y0, y1) = ZOOM
+    ax.add_patch(Rectangle((x0, y0), x1 - x0, y1 - y0, fill=False, ec=INK, lw=1.0, zorder=6))
+    ins = ax.inset_axes(ZOOM_AT)
+    paint(ins, feats, fac, pri, k=1.0)
+    for f in feats:
+        if pri.loc[f["properties"]["ADM_CD"], "사분면"] == "1순위" and _inside(f, ZOOM):
+            label(ins, f, "1순위", fontsize=9.5)
+    ins.set_xlim(x0, x1); ins.set_ylim(y0, y1)
+    ins.set_aspect(1 / math.cos(math.radians((y0 + y1) / 2)))
+    ins.set_xticks([]); ins.set_yticks([])
+    for sp in ins.spines.values():
+        sp.set_edgecolor(INK); sp.set_linewidth(1.0)
+    ins.text(0.02, 0.98, "도심 확대", transform=ins.transAxes, fontsize=9.5, color=INK, va="top", zorder=7, bbox=dict(boxstyle="square,pad=0.25", fc=SURFACE, ec="none"))
+
+
+def _inside(f: dict, box) -> bool:
+    x, y = centroid(max(rings(f["geometry"]), key=area))
+    return box[0][0] <= x <= box[0][1] and box[1][0] <= y <= box[1][1]
+
+
+def draw_city(ax, feats: list[dict], fac: pd.DataFrame, pri: pd.DataFrame, zoom: bool = False) -> str:
+    xs, ys = paint(ax, feats, fac, pri)
     for f in feats:
         nm, cd = f["properties"]["ADM_NM"], f["properties"]["ADM_CD"]
-        if pri.loc[cd, "사분면"] != "1순위" and nm not in CASE:
+        q = pri.loc[cd, "사분면"]
+        if q != "1순위" and nm not in CASE:
             continue
-        x, y = centroid(max(rings(f["geometry"]), key=area))
-        ax.annotate(nm, (x, y), xytext=NUDGE.get(nm, (0, 0)), textcoords="offset points", ha="center",
-                    va="center", fontsize=10.5, color=INK, fontweight="bold", zorder=5,
-                    bbox=dict(boxstyle="round,pad=0.22", fc=SURFACE, ec="none", alpha=0.88))
+        if zoom and _inside(f, ZOOM):
+            continue   # 도심 동 이름은 확대 그림에만 — 전체 지도에서는 점 덩어리를 덮는다
+        label(ax, f, q)
+    if zoom:
+        zoom_inset(ax, feats, fac, pri)
 
     # 경위도를 그대로 쓰면 동서가 늘어난다 — 위도에 맞춰 가로 비를 줄인다
     ax.set_xlim(min(xs), max(xs)); ax.set_ylim(min(ys), max(ys))
@@ -127,7 +175,8 @@ def main() -> None:
     for (city, sgg), box in zip(CITIES, boxes):
         feats = [f for f in geo if f["properties"]["도시"] == city]
         ax = fig.add_axes(box)
-        panels.append((ax, f"{city} {len(feats)}개 동", draw_city(ax, feats, fac[fac["SGG_NM"] == sgg], pri)))
+        panels.append((ax, f"{city} {len(feats)}개 동",
+                       draw_city(ax, feats, fac[fac["SGG_NM"] == sgg], pri, zoom=city == "춘천")))
 
     # 가로세로 비를 맞추면 두 지도의 실제 높이가 달라진다 — 제목은 축 대신 그림 좌표에서 같은 줄에 둔다
     for ax, _, _ in panels:
