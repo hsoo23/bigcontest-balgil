@@ -15,7 +15,8 @@
   큰 것부터 보려는 거름망이다. 같은 뜻인데 낱말이 달라 뜨는 것도 많고, 낱말이 겹쳐도 뜻이 다를 수 있으니
   판정이 아니라 읽을 순서다.
 
-실행: python scripts/check_numbers_context.py docs/draft/06_터전.md docs/draft/08_시나리오화면.md
+실행: python scripts/check_numbers_context.py                      (docs/draft/*.md 전체)
+      python scripts/check_numbers_context.py docs/draft/06_터전.md docs/draft/08_시나리오화면.md
       python scripts/check_numbers_context.py docs/draft/발표자료_슬라이드.md --slides 5,11 --suspect
 """
 from __future__ import annotations
@@ -54,6 +55,10 @@ def snip(line: str, tok: str, w: int) -> str:
     j = line.find(tok)
     if j < 0:
         j = line.find(cn.loose(tok))
+    if j < 0:
+        # in_table 이 단위를 떼고 찾은 경우(「84,253개」 ↔ 칸의 「84,253」). 안 하면 줄 머리를 잘라 보여 준다
+        bare = re.fullmatch(rf"({cn.NUM})(?:{cn.UNIT})", tok)
+        j = line.find(bare[1]) if bare else -1
     j = max(j, 0)
     return line[max(0, j - w): j + len(tok) + w].replace("|", "¦").strip()
 
@@ -64,7 +69,7 @@ def words(s: str) -> set[str]:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("files", nargs="+", type=Path)
+    ap.add_argument("files", nargs="*", type=Path, help="안 주면 check_numbers.py 와 같이 docs/draft/*.md")
     ap.add_argument("--slides", default="", help="발표자료에서 볼 장 번호, 쉼표로 (예: 5,11)")
     ap.add_argument("--suspect", action="store_true", help="낱말이 거의 안 겹치는 숫자만 보여 준다")
     ap.add_argument("--hits", type=int, default=4, help="숫자마다 보여 줄 수치표 줄 수")
@@ -76,7 +81,7 @@ def main() -> None:
     table_loose = [cn.loose(t) for t in table]
     slides = {s.strip() for s in a.slides.split(",") if s.strip()} or None
 
-    for f in a.files:
+    for f in a.files or cn.DEFAULT:
         if f.resolve() == cn.TABLE.resolve():
             continue
         print(f"\n■ {cn.show(f.resolve())}")
