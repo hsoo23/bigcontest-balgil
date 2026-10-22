@@ -17,3 +17,7 @@ data/external/sbiz_store/*
 # API 페이지별 원본 응답은 로컬에만 둔다(합친 CSV와 meta.json만 올린다). 5만 건에서 잘린 다운로드본도 올리지 않는다.
 data/external/fac_*/raw/
 data/external/**/*.truncated
+
+# 제출 패키지는 묶을 때마다 다시 만든다(zip 안에 같은 파일이 또 들어간다).
+# 묶는 법은 scripts/build_package.py 에 있고, 결과물은 올리지 않는다.
+reports/package/

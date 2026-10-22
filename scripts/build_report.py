@@ -33,6 +33,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DRAFT = ROOT / "docs" / "draft"
 OUT = ROOT / "reports" / "발길_분석보고서.md"
+HTML_OUT = ROOT / "reports" / "발길_분석보고서.html"
 
 SECTIONS = ["01_문제", "02_지표", "03_데이터", "04_분석근거", "05_모델링", "06_터전",
             "07_에이전트", "08_시나리오화면", "09_영향력실현가능성", "10_한계"]
@@ -65,6 +66,43 @@ COVER = """# 발길 — 고립은 발길이 좁아지고 끊기는 일이다
 """
 
 
+NL = chr(10)
+STYLE = """@page { size: A4; margin: 18mm 16mm; }
+body { font-family: "맑은 고딕", "Malgun Gothic", system-ui, sans-serif; color: #111;
+       line-height: 1.75; font-size: 10.5pt; max-width: 1000px; margin: 0 auto; padding: 24px; }
+h1 { font-size: 19pt; margin: 0 0 14px; padding-top: 6px; break-before: page; }
+h1:first-of-type { break-before: avoid; }
+h2 { font-size: 14pt; margin: 26px 0 8px; border-bottom: 1px solid #e6e6e4; padding-bottom: 4px; }
+h3 { font-size: 11.5pt; margin: 18px 0 6px; }
+table { border-collapse: collapse; width: 100%; margin: 10px 0 16px; font-size: 9.5pt;
+        break-inside: avoid; }
+th, td { border: 1px solid #dcdcda; padding: 5px 8px; text-align: left; vertical-align: top; }
+th { background: #eef2f7; }
+blockquote { margin: 12px 0; padding: 8px 14px; border-left: 3px solid #cde2fb;
+             background: #fafafa; color: #333; break-inside: avoid; }
+code { background: #f2f2f0; padding: 1px 4px; border-radius: 3px; font-size: 9pt; }
+pre { background: #f6f6f4; padding: 10px 12px; overflow-x: auto; font-size: 9pt;
+      break-inside: avoid; }
+hr { border: 0; border-top: 1px solid #e6e6e4; margin: 22px 0; }
+img { max-width: 100%; }
+@media print { body { padding: 0; } a { color: inherit; text-decoration: none; } }
+"""
+
+
+def to_html(md_text: str) -> str:
+    """PDF 로 뜨기 좋은 한 장짜리 HTML. 표·각주가 많아 tables 확장을 켠다.
+
+    PDF 로 바꾸는 도구(pandoc · wkhtmltopdf)가 이 PC 에 없다. 브라우저의 「인쇄 → PDF로
+    저장」이 한글 글꼴과 표를 가장 잘 뽑으므로 거기에 맞춘 CSS 를 넣는다. 절마다 쪽을
+    나누고(h1 break-before), 표·인용은 쪽 경계에서 쪼개지지 않게 한다."""
+    import markdown
+    body = markdown.markdown(md_text, extensions=["tables", "fenced_code", "sane_lists", "toc"])
+    head = ('<!doctype html>' + NL + '<html lang="ko"><head><meta charset="utf-8">'
+            + '<title>발길 — 분석보고서</title><style>' + STYLE + '</style></head>' + NL
+            + '<body>' + NL)
+    return head + body + NL + '</body></html>' + NL
+
+
 def strip_section(text: str) -> tuple[str, dict[str, int]]:
     """작업용 표시를 걷어낸다. 본문은 바꾸지 않는다."""
     n = {"머리줄": 0, "꼬리글": 0, "이슈 링크": 0}
@@ -93,6 +131,7 @@ def strip_section(text: str) -> tuple[str, dict[str, int]]:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--check", action="store_true", help="쓰지 않고 확인만 한다")
+    ap.add_argument("--html", action="store_true", help="PDF 로 뜨기 좋은 HTML 도 같이 만든다")
     a = ap.parse_args()
 
     parts, total, warn = [COVER], {"머리줄": 0, "꼬리글": 0, "이슈 링크": 0}, []
@@ -140,6 +179,10 @@ def main() -> None:
         OUT.parent.mkdir(parents=True, exist_ok=True)
         OUT.write_text(doc, encoding="utf-8")
         print(f"저장: {OUT.relative_to(ROOT)}  —  {len(SECTIONS)}절 · {len(doc.splitlines()):,}줄 · {len(doc):,}자")
+        if a.html:
+            html = to_html(doc)
+            HTML_OUT.write_text(html, encoding="utf-8")
+            print(f"저장: {HTML_OUT.relative_to(ROOT)}  —  브라우저에서 열어 [인쇄 → PDF로 저장]")
     else:
         print(f"확인만 했습니다 — {len(SECTIONS)}절 · {len(doc.splitlines()):,}줄")
     print("걷어낸 것: " + " · ".join(f"{k} {v}" for k, v in total.items()))
