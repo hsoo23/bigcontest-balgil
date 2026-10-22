@@ -5,8 +5,8 @@
 먼저 묶여 있어야 한다. 그래서 묶는 것과 세는 것을 같이 한다.
 
 만드는 것 (reports/package/)
-  발길_재현코드.zip          git 이 추적하는 파일 전부에서 data/external 만 뺀 것
-                            (외부 원본은 따로 내므로 두 번 넣지 않는다)
+  발길_재현코드.zip          git 이 추적하는 파일에서 data/external 과 reports/발길_* 를 뺀 것
+                            (외부 원본과 제출본은 따로 나가므로 두 번 넣지 않는다 — PPTX 하나가 2.5MB 다)
   발길_외부데이터원본.zip     data/external/** — 10종 · 출처와 SHA-256 은 docs/external_data.md
   발길_가상데이터.zip         data/synthetic/** — 파일명과 「비고」 열에 「가상」이 붙어 있다
   발길_화면캡처.zip          reports/screens/*.png — **capture_screens.py 를 먼저 돌려야 한다**
@@ -71,7 +71,10 @@ def main() -> None:
 
     files = tracked()
     ext = [f for f in files if "data/external/" in f.as_posix()]
-    code = [f for f in files if f not in set(ext)]
+    # 따로 첨부로 나가는 제출본은 코드 zip 에 또 넣지 않는다 — PPTX 하나가 2.5MB 다.
+    # 그림(reports/figures)은 남긴다. 보고서가 그 파일을 가리키고 다시 그릴 수 있어야 한다
+    out = [f for f in files if f.parent.name == "reports" and f.name.startswith("발길_")]
+    code = [f for f in files if f not in set(ext) | set(out)]
     syn = sorted((ROOT / "data" / "synthetic").glob("*")) if (ROOT / "data" / "synthetic").exists() else []
     shots = sorted((ROOT / "reports" / "screens").glob("*.png")) if (ROOT / "reports" / "screens").exists() else []
 
