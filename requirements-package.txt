@@ -1,0 +1,10 @@
+# 제출물을 묶을 때만 쓰는 라이브러리(E1). 분석 고정 버전은 requirements.txt 를 그대로 따른다.
+# 여기 있는 것은 숫자를 만들지 않는다 — 보고서 HTML 과 발표자료 PPTX 를 뜨는 데만 쓴다.
+# 그래서 requirements.txt 는 건드리지 않는다(#65 5번: 분석 버전은 회의에서 합의하고 올린다).
+-r requirements.txt
+
+markdown==3.10.3        # build_report.py --html
+python-pptx==1.0.2      # build_slides_pptx.py
+
+# 화면 캡처는 playwright 가 따로 필요하다(capture_screens.py 머리말).
+#   pip install playwright==1.55.0 && python -m playwright install chromium

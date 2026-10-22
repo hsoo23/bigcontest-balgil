@@ -22,7 +22,9 @@
 
 입력: docs/draft/01_문제.md … 10_한계.md (저장소에 있는 그대로)
 출력: reports/발길_분석보고서.md  (PDF 는 이 파일로 만든다 — 제출물 이름은 발길_분석보고서.pdf)
-실행: python scripts/build_report.py [--check]   (--check 는 쓰지 않고 확인만 한다)
+실행: python scripts/build_report.py [--check] [--html]
+      --check 는 쓰지 않고 확인만, --html 은 PDF 로 뜨기 좋은 HTML 도 같이 만든다
+의존: --html 에만 markdown 이 필요하다 — `pip install -r requirements-package.txt`
 """
 from __future__ import annotations
 

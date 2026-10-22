@@ -19,7 +19,8 @@
 입력: docs/draft/발표자료_슬라이드.md · reports/figures/*.png
 출력: reports/발길_발표자료.pptx (16:9, 13.333 × 7.5 인치)
 실행: python scripts/build_slides_pptx.py
-의존: python-pptx (캡처·그림과 같이 제출물을 만드는 쪽이라 requirements 에 넣지 않는다)
+의존: python-pptx — `pip install -r requirements-package.txt`. 숫자를 만들지 않는 쪽이라
+      분석 고정 버전(requirements.txt)과 갈라 둔다
 
 PPTX 는 바이트로 재현되지 않는다(만든 시각이 들어간다). 그림과 같은 규칙으로 **한 사람이
 만들어 커밋한다**(#72).
