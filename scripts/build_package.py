@@ -33,6 +33,9 @@ ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "reports" / "package"
 MAIL_LIMIT = 25 * 1024 * 1024          # 「보내기 전 확인」 6번
 GANGWON_ZIP = 13.3 * 1024 * 1024       # 상가 강원 CSV zip — #112 에서 첨부로 정했고 수경이 잰 값
+# #121 에서 논의 중인 두 길. 「링크」 안으로 가면 아래 둘은 메일 본문 링크로 나가므로
+# 첨부 합계에서 빠진다. 어느 쪽으로 정해도 그날 다시 고치지 않도록 **두 값을 같이 찍는다**
+LINKED = ("발길_화면캡처.zip", "발길_외부데이터원본_상가강원.zip")
 # 코드 zip 에서 뺄 것. 제출본·캡처는 따로 첨부로 나가고(두 번 보내지 않는다),
 # 아래 셋은 심사위원에게 보낼 글이 아니다(옛 문서 · 노션 파생물 · 깃허브 설정)
 CODE_SKIP = ("reports/screens/", "docs/archive/", "docs/notion/", ".github/")
@@ -107,25 +110,35 @@ def main() -> None:
             made.append((extra + "  (reports/)", p, 1))
 
     print("■ 만든 것")
-    total = 0
+    total = linked = 0.0
     for name, p, n in made:
         sz = p.stat().st_size
         if name.endswith(".zip"):
             total += sz
+            if name in LINKED:
+                linked += sz
         print(f"  {name:40s} {n:4d}개  {mb(sz):>10s}")
     known = total if gw else total + GANGWON_ZIP       # 강원 zip 은 여기서 묶었거나, 크기만 아는 값
-    room = MAIL_LIMIT - known
+    if not gw:
+        linked += GANGWON_ZIP                         # 묶이지 않았어도 링크로 갈 쪽에 든다
     print(f"  {'zip 합계':40s} {'':4s}  {mb(total):>10s}")
     if not gw:
         print(f"  {'+ 상가 강원 zip (이 PC 에 원본 없음, 잰 값)':40s} {'':4s}  {mb(GANGWON_ZIP):>10s}")
     print(f"  {'= 지금까지 아는 첨부':40s} {'':4s}  {mb(known):>10s}")
     print()
-    if room <= 0:
-        print(f"■ 25MB 를 이미 넘었습니다({mb(-room)} 초과) — 메일을 「1/2 · 2/2」로 나눕니다")
-    else:
-        print(f"■ **PDF 넷을 더해 {mb(room)} 이하여야 한 통으로 나갑니다.** "
-              f"넘으면 「1/2 · 2/2」로 나눕니다(제출요건 6-2 확인 6번)")
-        print("   PDF 크기는 뜬 뒤에 알 수 있습니다 — 발표자료 PDF 가 그림 15장 + 캡처를 품어 가장 큽니다")
+
+    # #121 — 두 길의 여유를 같이 찍는다. PDF 넷의 크기는 뜬 뒤에 알 수 있으므로
+    # 「합계가 넘는가」가 아니라 「PDF 에 얼마가 남는가」로 말한다
+    print("■ PDF 넷에 남는 자리 (#121)")
+    for label, attach in [("전부 첨부 — 상가 강원 · 화면캡처까지 메일에", known),
+                          ("큰 것은 링크 — 상가 강원 · 화면캡처를 본문 링크로", known - linked)]:
+        room = MAIL_LIMIT - attach
+        if room <= 0:
+            print(f"  {label:48s} 첨부 {mb(attach):>10s}  ■ 이미 {mb(-room)} 초과 — PDF 를 넣을 자리가 없습니다")
+        else:
+            print(f"  {label:48s} 첨부 {mb(attach):>10s}  → PDF 넷을 더해 {mb(room)} 이하")
+    print("   발표자료 PDF 가 그림 15장 + 캡처를 품어 가장 큽니다. 뜨는 대로 #121 에 크기를 적습니다")
+    print("   한 통으로 안 되면 「1/2 · 2/2」로 나눕니다(제출요건 6-2 확인 6번)")
 
     if missing:
         print("\n■ 아직 못 만든 것")
