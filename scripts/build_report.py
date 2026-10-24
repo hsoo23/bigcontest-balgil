@@ -50,6 +50,11 @@ HEAD = re.compile(r"^\*\*(?:담당|윤지 · 초안)[^*]*\*\*")        # 「**�
 TAIL = re.compile(r"^\*\*(?:남은 일|채우기 전 확인)\*\*")       # 절 끝의 우리끼리 메모
 ISSUE = re.compile(r"\[(#\d+)\]\(https://github\.com/[^)]*\)")  # [#88](url) → #88
 URL = re.compile(r"https://github\.com/\S+")
+# 그림은 원고에서 `![…](../../reports/figures/x.png)`로 쓴다 — 그래야 깃허브에서도 보인다.
+# 묶은 파일은 reports/ 안에 있으므로 그 앞부분만 떼면 경로가 맞는다
+IMG_PREFIX = re.compile(r"(!\[[^\]]*\]\()\.\./\.\./reports/")
+# 아직 그림이 안 붙은 자리 — `[그림 6-1: …]`처럼 글자로만 남은 줄
+FIG_TODO = re.compile(r"(?<!!)\[그림[^\]]*\]")
 # 채울 자리는 `〈수치표: 이름〉`과 빈 `〈 〉`뿐이다(draft/README 2번). `〈양〉`·`〈연속성〉`처럼
 # 홑화살괄호를 쓰는 것이 또 있다 — 에이전트 브리핑의 **출력 라벨**이라 본문에 그대로 실린다
 SLOT = re.compile(r"〈\s*(?:수치표\s*:[^〉]*)?\s*〉")
@@ -86,6 +91,9 @@ code { background: #f2f2f0; padding: 1px 4px; border-radius: 3px; font-size: 9pt
 pre { background: #f6f6f4; padding: 10px 12px; overflow-x: auto; font-size: 9pt;
       break-inside: avoid; }
 hr { border: 0; border-top: 1px solid #e6e6e4; margin: 22px 0; }
+figure { margin: 14px 0 18px; break-inside: avoid; }
+figure img { max-width: 100%; border: 1px solid #e6e6e4; }
+figcaption { font-size: 9pt; color: #52514e; margin-top: 6px; }
 img { max-width: 100%; }
 @media print { body { padding: 0; } a { color: inherit; text-decoration: none; } }
 """
@@ -99,6 +107,10 @@ def to_html(md_text: str) -> str:
     나누고(h1 break-before), 표·인용은 쪽 경계에서 쪼개지지 않게 한다."""
     import markdown
     body = markdown.markdown(md_text, extensions=["tables", "fenced_code", "sane_lists", "toc"])
+    # 그림은 설명을 보이게 — alt 는 인쇄물에서 안 보인다. `<p><img …></p>` 를 figure 로 감싼다
+    body = re.sub(r'<p>(<img alt="([^"]*)"[^>]*>)</p>',
+                  lambda m: f'<figure>{m.group(1)}<figcaption>{m.group(2)}</figcaption></figure>',
+                  body)
     head = ('<!doctype html>' + NL + '<html lang="ko"><head><meta charset="utf-8">'
             + '<title>발길 — 분석보고서</title><style>' + STYLE + '</style></head>' + NL
             + '<body>' + NL)
@@ -107,7 +119,7 @@ def to_html(md_text: str) -> str:
 
 def strip_section(text: str) -> tuple[str, dict[str, int]]:
     """작업용 표시를 걷어낸다. 본문은 바꾸지 않는다."""
-    n = {"머리줄": 0, "꼬리글": 0, "이슈 링크": 0}
+    n = {"머리줄": 0, "꼬리글": 0, "이슈 링크": 0, "그림 경로": 0}
     lines, out, drop_tail = text.splitlines(), [], False
     for i, ln in enumerate(lines):
         if HEAD.match(ln):
@@ -127,6 +139,8 @@ def strip_section(text: str) -> tuple[str, dict[str, int]]:
     body = "\n".join(out)
     body, k = ISSUE.subn(r"\1", body)
     n["이슈 링크"] = k
+    body, k = IMG_PREFIX.subn(lambda m: m.group(1), body)
+    n["그림 경로"] = k
     return body.strip("\n"), n
 
 
@@ -136,7 +150,7 @@ def main() -> None:
     ap.add_argument("--html", action="store_true", help="PDF 로 뜨기 좋은 HTML 도 같이 만든다")
     a = ap.parse_args()
 
-    parts, total, warn = [COVER], {"머리줄": 0, "꼬리글": 0, "이슈 링크": 0}, []
+    parts, total, warn = [COVER], {"머리줄": 0, "꼬리글": 0, "이슈 링크": 0, "그림 경로": 0}, []
     toc = []
     for name in SECTIONS:
         p = DRAFT / f"{name}.md"
@@ -152,6 +166,11 @@ def main() -> None:
             warn.append(f"{p.name}: 채우지 않은 자리 {slot}")
         for url in URL.findall(body):
             warn.append(f"{p.name}: 남은 링크 {url}")
+        for todo in FIG_TODO.findall(body):
+            warn.append(f"{p.name}: 그림이 글자로만 있습니다 {todo[:50]}")
+        for m in re.finditer(r"!\[[^\]]*\]\(([^)]+)\)", body):
+            if not (OUT.parent / m.group(1)).exists():
+                warn.append(f"{p.name}: 그림 파일이 없습니다 {m.group(1)}")
         parts.append(body)
 
     for label, title, src, start in APPENDIX:

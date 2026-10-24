@@ -7,6 +7,8 @@
 의존: 화면 라이브러리(app/requirements-app.txt) + playwright (캡처 전용이라 requirements에 넣지 않는다)
       pip install playwright==1.55.0 && python -m playwright install chromium
 산출: reports/screens/screen{1..4}.png  (화면 ①은 시연 기준일 DEMO_AS_OF 주가 기본값으로 찍힌다)
+      + screen4_after.png — 화면 ④를 「계절 + 공통 충격 보정」으로 바꿔 한 장 더. 기본값(보정 없음)과
+        나란히 놓아야 「얼마나 지웠나」가 보인다(08절 그림 8-4, 발표 11장)
 주의: 화면 ③ 배경 지도(Esri 타일)는 인터넷이 있어야 그려진다. 없으면 동 경계·시설 점만 찍힌다.
 """
 from __future__ import annotations
@@ -37,6 +39,19 @@ def wait_up(url: str, timeout: float = 90) -> None:
     raise RuntimeError(f"streamlit이 {timeout:.0f}초 안에 뜨지 않았습니다 ({url})")
 
 
+AFTER = "계절 + 공통 충격 보정"   # 화면 ④ 라디오의 마지막 단계 (app STEPS 키와 같아야 한다)
+
+
+async def snap(page, width: int, path: Path, name: str) -> None:
+    # streamlit은 페이지가 아니라 안쪽 영역이 스크롤돼 full_page가 첫 화면만 찍는다 → 창을 내용 높이로 늘린다
+    h = await page.evaluate("() => document.querySelector('[data-testid=\"stMainBlockContainer\"]')"
+                            ".getBoundingClientRect().bottom + window.scrollY")
+    await page.set_viewport_size({"width": width, "height": int(h) + 40})
+    await page.wait_for_timeout(1_500)
+    await page.screenshot(path=str(path), full_page=True)
+    print(f"  {name} → {path.relative_to(ROOT)}")
+
+
 async def shoot(url: str, screens: list[str], width: int, scale: int) -> None:
     from playwright.async_api import async_playwright
 
@@ -51,14 +66,13 @@ async def shoot(url: str, screens: list[str], width: int, scale: int) -> None:
             await page.wait_for_selector(".bg-h", timeout=90_000)  # 화면 제목(style.heading)이 그려질 때까지
             await page.wait_for_load_state("networkidle")
             await page.wait_for_timeout(6_000 if n == "3" else 3_000)  # 차트 애니메이션·지도 타일
-            # streamlit은 페이지가 아니라 안쪽 영역이 스크롤돼 full_page가 첫 화면만 찍는다 → 창을 내용 높이로 늘린다
-            h = await page.evaluate("() => document.querySelector('[data-testid=\"stMainBlockContainer\"]')"
-                                    ".getBoundingClientRect().bottom + window.scrollY")
-            await page.set_viewport_size({"width": width, "height": int(h) + 40})
-            await page.wait_for_timeout(1_500)
-            path = OUT / f"screen{n}.png"
-            await page.screenshot(path=str(path), full_page=True)
-            print(f"  화면 {n} {NAMES[n]} → {path.relative_to(ROOT)}")
+            await snap(page, width, OUT / f"screen{n}.png", f"화면 {n} {NAMES[n]}")
+            if n == "4":
+                await page.set_viewport_size({"width": width, "height": 1000})
+                await page.get_by_text(AFTER, exact=True).click()
+                await page.wait_for_load_state("networkidle")
+                await page.wait_for_timeout(3_000)
+                await snap(page, width, OUT / "screen4_after.png", f"화면 4 {NAMES['4']} — {AFTER}")
         await browser.close()
 
 

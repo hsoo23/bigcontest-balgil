@@ -16,7 +16,7 @@
   발표자료 PDF     구글 슬라이드에서 내려받는다(원고는 build_slides_pptx.py 로 만든 PPTX)
   보고서·설계자료 PDF  브라우저에서 HTML 을 열어 「인쇄 → PDF로 저장」
   상가 강원 CSV zip   원본이 현수 PC 에만 있다
-  큰 외부 원본 2종    합계 436.9MB 라 메일로 못 보낸다(#40 ③, 메일 3번 문단)
+  큰 외부 원본 2종    서울 CSV · SGIS shp 세트 437.1MB 라 메일로 못 보낸다(#40 ③, 메일 3번 문단)
 
 실행: python scripts/build_package.py [--open]
 """
@@ -32,6 +32,10 @@ from build_report import to_html
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "reports" / "package"
 MAIL_LIMIT = 25 * 1024 * 1024          # 「보내기 전 확인」 6번
+GANGWON_ZIP = 13.3 * 1024 * 1024       # 상가 강원 CSV zip — #112 에서 첨부로 정했고 수경이 잰 값
+# 코드 zip 에서 뺄 것. 제출본·캡처는 따로 첨부로 나가고(두 번 보내지 않는다),
+# 아래 셋은 심사위원에게 보낼 글이 아니다(옛 문서 · 노션 파생물 · 깃허브 설정)
+CODE_SKIP = ("reports/screens/", "docs/archive/", "docs/notion/", ".github/")
 
 DESIGN = [("발길_E5_가상데이터생성설계자료", ROOT / "docs" / "draft" / "E5_가상데이터설계자료.md"),
           ("발길_E6_LLM활용설계자료", ROOT / "docs" / "draft" / "E6_LLM활용설계자료.md")]
@@ -40,13 +44,15 @@ ELSEWHERE = [("발길_발표자료.pdf", "구글 슬라이드에서 내려받기
              ("발길_분석보고서.pdf", "reports/발길_분석보고서.html 을 브라우저에서 [인쇄 → PDF로 저장]"),
              ("발길_E5_가상데이터생성설계자료.pdf", "아래에서 만든 HTML 을 같은 방법으로"),
              ("발길_E6_LLM활용설계자료.pdf", "아래에서 만든 HTML 을 같은 방법으로"),
-             ("발길_외부데이터원본_상가강원.zip", "원본이 현수 PC 에만 있습니다 (62.6MB → zip 13.3MB)"),
-             ("(메일 3번) 큰 외부 원본 2종", "합계 436.9MB 라 첨부하지 않고 본문에 적습니다 (#40 ③)")]
+             ("발길_외부데이터원본_상가강원.zip", "이 PC 에 원본이 없습니다. data/external/sbiz_store/ 에 강원 CSV 가 있는 PC(수경·현수)에서 돌리면 여기서 묶입니다"),
+             ("(메일 3번) 큰 외부 원본 2종", "서울 CSV · SGIS shp 세트 437.1MB — 첨부하지 않고 본문에 적습니다 (#40 ③)")]
 
 
 def tracked() -> list[Path]:
+    """git 이 추적하는 파일. 머지 충돌 중에는 한 파일이 단계별로 여러 번 나오므로 겹치는 것을 지운다."""
     out = subprocess.run(["git", "ls-files", "-z"], cwd=ROOT, capture_output=True, check=True)
-    return [ROOT / f for f in out.stdout.decode("utf-8").split("\0") if f]
+    names = dict.fromkeys(n for n in out.stdout.decode("utf-8").split(chr(0)) if n)
+    return [ROOT / n for n in names]
 
 
 def zip_files(name: str, files: list[Path], base: Path = ROOT) -> Path | None:
@@ -74,13 +80,18 @@ def main() -> None:
     # 따로 첨부로 나가는 제출본은 코드 zip 에 또 넣지 않는다 — PPTX 하나가 2.5MB 다.
     # 그림(reports/figures)은 남긴다. 보고서가 그 파일을 가리키고 다시 그릴 수 있어야 한다
     out = [f for f in files if f.parent.name == "reports" and f.name.startswith("발길_")]
-    code = [f for f in files if f not in set(ext) | set(out)]
+    skip = set(ext) | set(out) | {f for f in files if any(s in f.as_posix() for s in CODE_SKIP)}
+    code = [f for f in files if f not in skip]
     syn = sorted((ROOT / "data" / "synthetic").glob("*")) if (ROOT / "data" / "synthetic").exists() else []
+    # 상가 강원 CSV 는 git 에 없지만(62.6MB) 원본이 있는 PC 에서는 여기서 묶는다 —
+    # 그래야 25MB 판정이 「실제로 보낼 첨부」 기준이 된다(#117 수경·현수 리뷰)
+    gw = sorted((ROOT / "data" / "external" / "sbiz_store").glob("*강원*.csv"))
     shots = sorted((ROOT / "reports" / "screens").glob("*.png")) if (ROOT / "reports" / "screens").exists() else []
 
     made, missing = [], []
     for name, group in [("발길_재현코드.zip", code), ("발길_외부데이터원본.zip", ext),
-                        ("발길_가상데이터.zip", syn), ("발길_화면캡처.zip", shots)]:
+                        ("발길_가상데이터.zip", syn), ("발길_화면캡처.zip", shots),
+                        ("발길_외부데이터원본_상가강원.zip", gw)]:
         p = zip_files(name, group)
         (made.append((name, p, len(group))) if p else missing.append(name))
 
@@ -102,8 +113,19 @@ def main() -> None:
         if name.endswith(".zip"):
             total += sz
         print(f"  {name:40s} {n:4d}개  {mb(sz):>10s}")
-    print(f"  {'zip 합계':40s} {'':4s}  {mb(total):>10s}   (메일 한도 25MB "
-          f"{'아래 — 한 통으로 보냅니다' if total < MAIL_LIMIT else '초과 — 「1/2 · 2/2」로 나눕니다'})")
+    known = total if gw else total + GANGWON_ZIP       # 강원 zip 은 여기서 묶었거나, 크기만 아는 값
+    room = MAIL_LIMIT - known
+    print(f"  {'zip 합계':40s} {'':4s}  {mb(total):>10s}")
+    if not gw:
+        print(f"  {'+ 상가 강원 zip (이 PC 에 원본 없음, 잰 값)':40s} {'':4s}  {mb(GANGWON_ZIP):>10s}")
+    print(f"  {'= 지금까지 아는 첨부':40s} {'':4s}  {mb(known):>10s}")
+    print()
+    if room <= 0:
+        print(f"■ 25MB 를 이미 넘었습니다({mb(-room)} 초과) — 메일을 「1/2 · 2/2」로 나눕니다")
+    else:
+        print(f"■ **PDF 넷을 더해 {mb(room)} 이하여야 한 통으로 나갑니다.** "
+              f"넘으면 「1/2 · 2/2」로 나눕니다(제출요건 6-2 확인 6번)")
+        print("   PDF 크기는 뜬 뒤에 알 수 있습니다 — 발표자료 PDF 가 그림 15장 + 캡처를 품어 가장 큽니다")
 
     if missing:
         print("\n■ 아직 못 만든 것")
