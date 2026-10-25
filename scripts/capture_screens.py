@@ -63,7 +63,7 @@ async def shoot(url: str, screens: list[str], width: int, scale: int) -> None:
         page = await browser.new_page(viewport={"width": width, "height": 1000}, device_scale_factor=scale)
         for n in screens:
             await page.goto(f"{url}/?screen={n}")
-            await page.wait_for_selector(".bg-h", timeout=90_000)  # 화면 제목(style.heading)이 그려질 때까지
+            await page.wait_for_selector(".bg-top", timeout=90_000)  # 화면 제목줄(style.topbar)이 그려질 때까지
             await page.wait_for_load_state("networkidle")
             await page.wait_for_timeout(6_000 if n == "3" else 3_000)  # 차트 애니메이션·지도 타일
             await snap(page, width, OUT / f"screen{n}.png", f"화면 {n} {NAMES[n]}")

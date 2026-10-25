@@ -13,7 +13,9 @@
   * 집단 지표(양·질·연속성)는 시군구 × 성 × 연령까지만. 동 단위로 보여 주는 것은 터전뿐이다.
   * 화면 ①은 D1 agent.py 판정(빨강·주황·노랑·초록 넷)을 그대로 보인다. 기획안 3절 5단계의 초록·연두 구분과
     장보기형·병원약국형 구분은 agent.py에 규칙이 생기면 따라 바꾼다(#4 수경 코멘트).
-  * 숫자는 10/17 수치 동결 뒤 docs/최종수치표.md 값으로 교체한다.
+  * 숫자는 docs/최종수치표.md와 같다 — 화면이 새 숫자를 만들지 않고 위 파일만 읽는다.
+  * 읽는 순서를 정한다: 질문(제목) → 답 카드 한 장(「그래서 무엇을」 + 오늘 할 일) → 그림 → 세부는 접어 둔다.
+    방법·출처 설명은 화면마다 맨 아래 「이 화면 읽는 법 · 출처」 한 곳에 모은다.
 
 겉모양은 app/style.py(Stripe DESIGN.md 토큰). 데이터 색은 dataviz 기준 팔레트(검증: validate_palette.js)
   신호(빨강·주황·노랑)  status critical/serious/warning — 색만으로 말하지 않고 항상 점·글자를 같이 단다
@@ -61,7 +63,7 @@ FEATURE_KO = {
 }
 WEEK0 = pd.Timestamp("2025-07-07")  # weekly_panel의 w=0 주의 월요일
 
-st.set_page_config(page_title="발길 — 담당자 화면", page_icon="👣", layout="wide")
+st.set_page_config(page_title="발길 — 담당자 화면", page_icon="👣", layout="wide", initial_sidebar_state="expanded")
 st.html(ui.CSS)  # <style>만 있으면 앱 전체에 적용된다
 
 
@@ -185,32 +187,78 @@ def next_action(r: pd.Series, n_same: int) -> str:
     return "—"
 
 
-def screen_briefing():
-    html(ui.heading("①", "주간 브리핑", "이번 주 누구를 먼저 확인할까 — 60대 이상 12개 집단, 보정 후 끊김 신호"))
-    summ, groups = load_agent()
-    days = list(summ["기준일"])
-    as_of = st.select_slider("주 (월~일, 지난 7일 창)", options=days, value=pd.Timestamp(DEMO_AS_OF) if
-                             pd.Timestamp(DEMO_AS_OF) in days else days[-1],
-                             format_func=lambda d: f"{d - pd.Timedelta(days=6):%m/%d}~{d:%m/%d}")
-    sm = summ[summ["기준일"] == as_of].iloc[0]
-    g = groups[groups["기준일"] == as_of].copy()
+SHORT = {"빨강": "필수형 끊김", "주황": "대면형 끊김", "노랑": "좁아짐", "초록": "평온"}
+SEXES, AGES = ["남", "여"], ["60대", "70대", "80대"]
 
-    c = st.columns(4)
-    n, n_prev = int(sm["확인권고_집단"]), int(sm["지난주_확인권고_집단"])
-    c[0].markdown(ui.stat("확인 권고 집단", f"{n}", f"지난주 {n_prev}개 → {n - n_prev:+d}", unit="/ 12"),
-                  unsafe_allow_html=True)
-    c[1].markdown(ui.stat("빨강 · 필수형 끊김", f"{int(sm['빨강'])}", "필수 발길(장보기·병원·약국)까지", dot=CRITICAL),
-                  unsafe_allow_html=True)
-    c[2].markdown(ui.stat("주황 · 대면형 끊김", f"{int(sm['주황'])}", "대면 발길만", dot=SERIOUS), unsafe_allow_html=True)
-    # 공통 충격 보정은 경보를 지우기도(명절) 드러내기도(30·40대는 그대로인데 고령만 준 주) 한다.
-    # 그래서 "남은"이 아니라 "보정 뒤"로 부르고, 늘어난 주는 늘어났다고 적는다 (10/01 강남 남 60대 주황이 그 예)
-    a0, a1, a2 = (int(sm[k]) for k in ("경보일_보정없음", "경보일_계절보정", "경보일_공통충격보정"))
-    note = " · 보정으로 드러난 끊김" if a2 > a0 else ""
-    c[3].markdown(ui.stat("보정 뒤 경보일", f"{a2}", f"집단 × 일 · 보정 없이 {a0} → 계절 {a1}{note}"),
-                  unsafe_allow_html=True)
 
-    st.write("")
-    g["_o"] = g["신호"].map(SIGNAL_ORDER)
+def readme(parts: list[str]):
+    """방법·출처 설명은 화면 맨 아래 한 곳에 접어 둔다 — 먼저 보는 자리에는 답과 그림만 둔다."""
+    with st.expander("이 화면 읽는 법 · 출처"):
+        for t in parts:
+            st.caption(t)
+
+
+def briefing_answer(g: pd.DataFrame, n_people: int) -> tuple[str, str, list | None]:
+    """이번 주 답 — (한 줄, 덧말, 오늘 할 일). agent.py 권고 순서(07_에이전트 7.5)를 할 일 세 칸으로 편다.
+    첫인상에서 읽히도록 한 줄은 짧게, 근거 숫자는 아래 타일·신호판이 맡는다."""
+    broken = g[g["신호"].isin(["빨강", "주황"])]
+    same = broken[broken["동시끊김"]]
+    if broken.empty:
+        n_y = int((g["신호"] == "노랑").sum())
+        return ("<b>끊긴 집단이 없습니다</b>",
+                f"좁아진 {n_y}개 집단은 동 단위 프로그램·봉사로 나갑니다" if n_y else "다음 주에 다시 봅니다", None)
+    # 궂은 날은 「큰비 2일」만 — 날짜는 아래 자세히 표에 있다
+    wx = {c: d["궂은날"].replace("", np.nan).dropna() for c, d in broken.groupby("도시")}
+    no_dates = lambda t: re.sub(r"\(.*?\)", "", t)  # noqa: E731
+    wx_txt = " · ".join(f"{c} {no_dates(v.iloc[0])}" for c, v in wx.items() if len(v))
+    wx_sub = f" · 이 주 궂은 날: {ui.esc(wx_txt)}" if wx_txt else ""
+    if not same.empty:
+        return (f"고령 <b>{len(same)}개 집단</b>이 도시마다 함께 끊겼습니다",
+                f"한 사람씩 전화하기 전에 <b>공통 사건</b>부터 확인하세요{wx_sub}",
+                [("공통 사건 확인", "명절·궂은 날·행사라면 개인 전화는 미룹니다", True),
+                 (f"아니면 {n_people}명에게 전화", "칸마다 가장 오래 끊긴 3명 (가상 명부)", False),
+                 ("닿지 않으면 가게·경로당 → 방문", "가져갈 복지서비스는 아래", False)])
+    if n_people == 0:
+        return (f"<b>{len(broken)}개 집단</b>이 끊겼지만 명부에 대상자가 없습니다",
+                f"신호는 집단 단위라 명부에 없는 어르신은 사람 목록에 오르지 않습니다{wx_sub}", None)
+    return (f"<b>{len(broken)}개 집단</b>이 끊겼습니다 — <b>{n_people}명</b>에게 먼저 전화하세요",
+            f"같은 도시에서 함께 끊긴 집단이 없어 개인 확인부터 합니다{wx_sub}",
+            [(f"{n_people}명에게 전화", "칸마다 가장 오래 끊긴 3명 (가상 명부)", True),
+             ("닿지 않으면 발길이 닿던 곳", "평소 가게나 경로당·마을회관에 묻습니다", False),
+             ("그래도 비면 방문", "빨강이면 복지서비스 후보를 붙여 갑니다", False)])
+
+
+def signal_tile(r: pd.Series | None) -> str:
+    """신호판 한 칸 — 색 띠 · 신호 이름 · 큰 숫자 하나 · 끊긴 날. 나머지(날씨·업종·다음 행동)는 접힌 표에."""
+    if r is None:
+        return "<div class='bg-tile calm'><div class='v'>—</div></div>"
+    sig = r["신호"]
+    color = SIGNAL[sig][1]
+    head = f"<div class='s'><span class='bg-dot' style='background:{color}'></span>{SHORT[sig]}</div>"
+    if sig in ("빨강", "주황"):
+        v = r["필수_7일최저_pct"] if sig == "빨강" else r["대면_7일최저_pct"]
+        return (f"<div class='bg-tile' style='border-top-color:{color};background:{ui.tint(color, .08)}'>{head}"
+                f"<div class='v'>{signed(v)}</div><div class='d'>끊긴 날 {int(r['끊김일수'])}일</div></div>")
+    word = "동 단위 자원" if sig == "노랑" else "평소대로"
+    return f"<div class='bg-tile calm' style='border-top-color:{color}'>{head}<div class='v'>{word}</div><div class='d'>&nbsp;</div></div>"
+
+
+def signal_matrix(g: pd.DataFrame):
+    """12개 집단을 (도시 · 성) 넷 × 연령 셋 한 판으로 — 표를 읽지 않아도 어디가 빨간지 먼저 보인다."""
+    by = g.set_index("집단")
+    cells = ["<div></div>"] + [f"<div class='ax top'>{a}</div>" for a in AGES]
+    for city in sorted(g["도시"].unique()):
+        for sx in SEXES:
+            cells.append(f"<div class='ax'>{ui.esc(city)} {sx}</div>")
+            cells += [signal_tile(by.loc[k] if (k := f"{city} {sx} {a}") in by.index else None) for a in AGES]
+    leg = "".join(f"<span><span class='bg-dot' style='background:{SIGNAL[k][1]}'></span>{SHORT[k]}</span>" for k in SIGNAL)
+    html(f"<div class='bg-board'><div class='hd'><div><div class='bg-sec' style='margin:0'>12개 집단 신호</div>"
+         f"<div class='sub'>숫자 = 지난 7일 중 가장 크게 준 날의 발길 (보정 뒤)</div></div><div class='lg'>{leg}</div></div>"
+         f"<div class='bg-mx'>{''.join(cells)}</div></div>")
+
+
+def signal_table(g: pd.DataFrame):
+    g = g.assign(_o=g["신호"].map(SIGNAL_ORDER))
     same = g[g["동시끊김"]].groupby("도시").size()
     has_wx = "날씨가능" in g
     rows = []
@@ -233,17 +281,65 @@ def screen_briefing():
     cols = [("신호", ""), ("집단", ""), ("끊긴 날", "n"), ("대면 발길 최저", "n"), ("필수 발길 최저", "n")]
     cols += [("날씨 가능", "m")] if has_wx else []
     html(ui.table(cols + [("평소 닿던 업종", "m"), ("다음 행동", "m")], rows, dim_key="_calm"))
-    st.caption("D1 agent.py 판정입니다(build_app_data.py가 매주 일요일 기준으로 돌린 표). 발길 변화는 지난 7일 창이고, "
-               "계절·같은 도시 30·40대 공통 충격을 보정한 값입니다. 「날씨 가능」은 끊긴 창 안에 궂은 날(특보 기준 근사)이 있었다는 "
-               "꼬리표이고, 알림을 지우지 않습니다. 노랑(좁아짐)은 6개월 평균이라 주마다 바뀌지 않습니다. "
-               "「평소 닿던 업종」은 6개월 평소 결제가 몰린 업종이고, 실제 가게·경로당은 본인 등록으로만 정합니다.")
-    st.write("")
-    people_table(as_of, g)
-    resource_lines(g)
+
+
+def screen_briefing():
+    summ, groups = load_agent()
+    days = list(summ["기준일"])
+    top, ctl = st.columns([3, 2], vertical_alignment="bottom")
+    top.markdown(ui.topbar("주간 브리핑", "이번 주 누구를 먼저 확인할까 — 60대 이상 12개 집단"), unsafe_allow_html=True)
+    as_of = ctl.select_slider("주 (월~일)", options=days, value=pd.Timestamp(DEMO_AS_OF) if
+                              pd.Timestamp(DEMO_AS_OF) in days else days[-1],
+                              format_func=lambda d: f"{d - pd.Timedelta(days=6):%m/%d}~{d:%m/%d}")
+    sm = summ[summ["기준일"] == as_of].iloc[0]
+    g = groups[groups["기준일"] == as_of].copy()
+    pp = load_people()
+    p = pp[pp["기준일"] == as_of] if pp is not None else pd.DataFrame()
+    text, sub, steps = briefing_answer(g, len(p))
+    wk = f"{as_of - pd.Timedelta(days=6):%m/%d}~{as_of:%m/%d}"
+
+    main, rail = st.columns([2.3, 1], gap="medium")
+    with main:
+        html(ui.hero_card(f"이번 주 답 · {wk}", text, sub))
+        n, n_prev = int(sm["확인권고_집단"]), int(sm["지난주_확인권고_집단"])
+        # 공통 충격 보정은 경보를 지우기도(명절) 드러내기도(30·40대는 그대로인데 고령만 준 주) 한다.
+        # 그래서 "남은"이 아니라 "보정 뒤"로 부르고, 늘어난 주는 늘어났다고 적는다 (10/01 강남 남 60대 주황이 그 예)
+        a0, a1, a2 = (int(sm[k]) for k in ("경보일_보정없음", "경보일_계절보정", "경보일_공통충격보정"))
+        html(ui.kpis([
+            ui.kpi("확인 권고 집단", f"{n}", ui.PRIMARY, "users", f"지난주 {n_prev}개", unit="/ 12"),
+            ui.kpi("필수형 끊김", f"{int(sm['빨강'])}", CRITICAL, "alert", "빨강 신호"),
+            ui.kpi("대면형 끊김", f"{int(sm['주황'])}", SERIOUS, "bell", "주황 신호"),
+            ui.kpi("보정 뒤 경보일", f"{a2}", "#1baf7a", "shield", f"보정 없이 {a0}" + (" · 늘어남" if a2 > a0 else ""))]))
+        signal_matrix(g)
+        with st.expander("집단별 자세히 — 끊긴 날 · 발길 최저 · 날씨 · 평소 닿던 업종 · 다음 행동"):
+            signal_table(g)
+        st.write("")
+        people_section(as_of, g, p)
+    with rail:
+        if steps:
+            html(ui.timeline("오늘 할 일", "agent.py 권고 순서", steps))
+        resource_lines(g)
+        readme([
+            "신호 — D1 agent.py 판정입니다(build_app_data.py가 매주 일요일 기준으로 돌린 표). 발길 변화는 지난 7일 창이고, "
+            "계절·같은 도시 30·40대 공통 충격을 보정한 값입니다. 칸의 숫자는 빨강이면 필수 발길(장보기·병원·약국), "
+            "주황이면 대면 발길의 7일 중 최저 변화입니다. 「날씨 가능」은 끊긴 창 안에 궂은 날(특보 기준 근사)이 있었다는 "
+            "꼬리표이고, 알림을 지우지 않습니다. 노랑(좁아짐)은 6개월 평균이라 주마다 바뀌지 않습니다. "
+            "「평소 닿던 업종」은 6개월 평소 결제가 몰린 업종이고, 실제 가게·경로당은 본인 등록으로만 정합니다.",
+            PEOPLE_NOTE, RESOURCE_NOTE])
 
 
 # ── ② 발길 상세 ────────────────────────────────────────────────────────
 N_DONG = {"강남": 22, "춘천": 25}  # 터전 순위의 분모 (도시 안 동 수)
+PEOPLE_NOTE = ("사람 — 대상자·주소·접촉일은 모두 가상입니다(scripts/build_synthetic.py, 생성 방식은 E5 설계자료). "
+               "발길 신호는 집단 단위이고, 동은 대상자 주소에서만 붙여 터전과 창구를 고릅니다 — 카드 지표를 동에 붙이지 않습니다. "
+               "창구는 그 동의 상대방 업종 가게가 경로당·마을회관의 3배가 안 되면 경로당·마을회관을 먼저 묻습니다(3배, #49에서 정함). "
+               "후보 수는 상가·시설 공개 자료의 개수이고, 실제로 다니던 곳은 본인 등록으로만 받습니다. "
+               "「물어볼 장소」는 가상 장소 표(places_가상.csv)에서 고른 것입니다 — 본인이 등록한 곳이 있으면 그곳, "
+               "없으면 그 동의 게이트키퍼 지정 가게를 업종마다 한 곳씩 먼저 4곳까지(창구가 경로당이면 그 동의 경로당·마을회관). "
+               "가게는 이름까지 가상이라 「한식 1」처럼 업종과 번호만 보이고, 경로당·마을회관은 실제 공공시설 이름입니다.")
+RESOURCE_NOTE = ("가져갈 것 — 복지로 중앙·지자체 복지서비스(고령 대상만)와 1365 봉사 일감(모집 중만)에서 agent.py가 고른 후보입니다. "
+                 "집단 단위라 개인에게 맞춘 추천이 아니고, 실제 연결은 방문한 담당자가 판단합니다. "
+                 "1365 일감은 2026-10-14 수집 시점에 모집 중인 것이라 시연 기준일(2025년)의 일감이 아닙니다.")
 
 
 def _short_places(text: str, dong: str) -> str:
@@ -254,20 +350,48 @@ def _short_places(text: str, dong: str) -> str:
     return re.sub(r"\(가상\) (?:" + re.escape(dong) + r" )?([^()]+?) \(([^()·]+?)(?: · 지정)?\)", short, text)
 
 
-def people_table(as_of: pd.Timestamp, g: pd.DataFrame):
+def _place(r: pd.Series) -> str:
+    # 본인이 등록한 곳이 있으면 그곳 하나, 없으면 그 동의 후보 (agent.py place_candidates)
+    if r.get("등록장소"):
+        return f"<b>본인 등록</b> {ui.esc(_short_places(r['등록장소'], r['행정동']))}"
+    if r.get("후보장소"):
+        return f"<span style='color:{ui.MUTE}'>후보</span> {ui.esc(_short_places(r['후보장소'], r['행정동']))}"
+    return "—"
+
+
+def person_row(r: pd.Series, sig: str) -> str:
+    color = SIGNAL[sig][1]
+    where = "경로당·마을회관 먼저" if r["창구"].startswith("경로당") else "가게 먼저"
+    place = (f"본인 등록 · {_short_places(r['등록장소'], r['행정동'])}" if r.get("등록장소") else
+             f"후보 · {_short_places(r['후보장소'], r['행정동'])}" if r.get("후보장소") else "")
+    return (f"<div class='row'><div class='av' style='background:{ui.tint(color, .14)};color:{color}'>{ui.esc(r['대상자ID'])}</div>"
+            f"<div class='who'><b>{ui.esc(r['집단'])}</b><span>{ui.esc(r['행정동'])} · {ui.esc(r['명부종류'])}</span></div>"
+            f"<div class='who'><span class='bg-chip' style='margin:0 0 3px;display:inline-block'>{where}</span>"
+            f"<span>{ui.esc(place)}</span></div>"
+            f"<div class='days'>{int(r['경과일'])}<small>일</small></div></div>")
+
+
+def people_section(as_of: pd.Timestamp, g: pd.DataFrame, p: pd.DataFrame):
     """끊긴 칸 × 가상 명부 → 이번 주 먼저 확인할 사람 (기획안 4절 0단계). 칸은 시군구 × 성 × 연령대이고,
-    동은 대상자 주소에서만 붙인다. 이름·연락처는 표에도 없다(E6 4절)."""
-    pp = load_people()
-    if pp is None:
+    동은 대상자 주소에서만 붙인다. 이름·연락처는 화면에 없다(E6 4절). 가장 오래 끊긴 다섯만 줄로, 나머지는 접힌 표로."""
+    if load_people() is None:
         return
-    p = pp[pp["기준일"] == as_of]
-    n_cell = g.set_index("집단")["명부_칸인원"] if "명부_칸인원" in g else pd.Series(dtype=float)
-    html(f"<div class='bg-sec'>먼저 확인할 사람 {len(p)}명 <span style='color:{ui.MUTE};font-weight:400'>"
-         "· 끊긴 칸마다 마지막 접촉이 오래된 3명 · <b>가상 명부</b>(41명, 실제 인물이 아닙니다)</span></div>")
     if p.empty:
-        html(f"<div class='bg-callout'>이번 주에는 끊긴 집단이 없어 명부에서 올릴 사람이 없습니다. "
-             "좁아짐(노랑)은 사람이 아니라 동 단위 자원으로 나갑니다.</div>")
+        html("<div class='bg-callout'>이번 주에는 확인할 사람이 없습니다. 좁아짐(노랑)은 사람이 아니라 동 단위 자원으로 나갑니다.</div>")
         return
+    sig_of = g.set_index("집단")["신호"]
+    top = p.sort_values(["경과일", "집단"], ascending=[False, True]).head(5)
+    rows = "".join(person_row(r, sig_of[r["집단"]]) for _, r in top.iterrows())
+    html(f"<div class='bg-board'><div class='hd'><div><div class='bg-sec' style='margin:0'>먼저 확인할 사람 {len(p)}명</div>"
+         f"<div class='sub'>마지막 접촉이 오래된 순 · <b>가상 명부</b>(41명, 실제 인물이 아닙니다)</div></div>"
+         f"<div class='lg'><span>먼저 물을 곳</span><span style='width:52px;justify-content:flex-end'>접촉 뒤</span></div></div>"
+         f"<div class='bg-plist'>{rows}</div></div>")
+    with st.expander(f"{len(p)}명 전체 — 집단 · 주소 동 · 창구 · 물어볼 장소"):
+        people_table(p, g)
+
+
+def people_table(p: pd.DataFrame, g: pd.DataFrame):
+    n_cell = g.set_index("집단")["명부_칸인원"] if "명부_칸인원" in g else pd.Series(dtype=float)
     order = g.set_index("집단")["신호"].map(SIGNAL_ORDER)
     p = p.assign(_o=p["집단"].map(order)).sort_values(["_o", "집단", "경과일"], ascending=[True, True, False])
     has_place = "후보장소" in p
@@ -280,50 +404,34 @@ def people_table(as_of: pd.Timestamp, g: pd.DataFrame):
             "신호": ui.badge(label.split(" · ")[0], color),
             "집단 (칸 인원)": ui.esc(r["집단"]) + (f" <span style='color:{ui.MUTE}'>({int(n)}명 중)</span>" if pd.notna(n) else ""),
             "대상자": ui.esc(r["대상자ID"]) + f" <span style='color:{ui.MUTE}'>{ui.esc(r['명부종류'])}</span>",
-            "마지막 접촉": f"<span style='white-space:nowrap'>{int(r['경과일'])}일 전</span>",  # 열이 하나 늘어 좁아져도 「121일 전」이 두 줄로 깨지지 않게
+            "마지막 접촉": f"<span style='white-space:nowrap'>{int(r['경과일'])}일 전</span>",
             "주소 동 · 터전 약한 순": f"{ui.esc(r['행정동'])} · {int(r['터전순위'])}/{N_DONG.get(city, '')}",
             "먼저 물을 창구": ui.esc(r["창구"]),
             "물어볼 곳 (후보 수)": ui.esc(re.sub(r"^(가게|경로당·마을회관) 먼저 — ", "", r["물어볼곳"])),
-            # 본인이 등록한 곳이 있으면 그곳 하나, 없으면 그 동의 후보 (agent.py place_candidates)
-            "물어볼 장소 (가상 가게)": (f"<b>본인 등록</b> {ui.esc(_short_places(r['등록장소'], r['행정동']))}" if r["등록장소"]
-                                     else f"<span style='color:{ui.MUTE}'>후보</span> {ui.esc(_short_places(r['후보장소'], r['행정동']))}")
-            if has_place else "",
+            "물어볼 장소 (가상 가게)": _place(r) if has_place else "",
         })
     cols = [("신호", ""), ("집단 (칸 인원)", ""), ("대상자", ""), ("마지막 접촉", "n"),
             ("주소 동 · 터전 약한 순", ""), ("먼저 물을 창구", ""), ("물어볼 곳 (후보 수)", "m")]
     html(ui.table(cols + ([("물어볼 장소 (가상 가게)", "m")] if has_place else []), rows))
-    st.caption("대상자·주소·접촉일은 모두 가상입니다(scripts/build_synthetic.py, 생성 방식은 E5 설계자료). "
-               "발길 신호는 집단 단위이고, 동은 대상자 주소에서만 붙여 터전과 창구를 고릅니다 — 카드 지표를 동에 붙이지 않습니다. "
-               "창구는 그 동의 상대방 업종 가게가 경로당·마을회관의 3배가 안 되면 경로당·마을회관을 먼저 묻습니다(3배, #49에서 정함). "
-               "후보 수는 상가·시설 공개 자료의 개수이고, 실제로 다니던 곳은 본인 등록으로만 받습니다. "
-               "「물어볼 장소」는 가상 장소 표(places_가상.csv)에서 고른 것입니다 — 본인이 등록한 곳이 있으면 그곳, "
-               "없으면 그 동의 게이트키퍼 지정 가게를 업종마다 한 곳씩 먼저 4곳까지(창구가 경로당이면 그 동의 경로당·마을회관). "
-               "가게는 이름까지 가상이라 「한식 1」처럼 업종과 번호만 보이고, 경로당·마을회관은 실제 공공시설 이름입니다.")
 
 
 def resource_lines(g: pd.DataFrame):
     """이 주에 가져갈 것 — agent.py match_resource(#44)가 상태별로 고른 자원 후보 3개. 집단 단위라 같은 도시·같은
-    신호면 같은 후보가 나오므로 묶어 한 줄씩 보인다. 사람에게 맞춘 추천이 아니다."""
+    신호면 같은 후보가 나오므로 묶어 한 장씩 보인다. 사람에게 맞춘 추천이 아니다."""
     if "자원후보" not in g or not (g["자원후보"] != "").any():
         return
     kind = {"빨강": "방문 때 가져갈 복지서비스", "주황": "만남이 생기는 봉사·프로그램", "노랑": "동 단위로 나갈 봉사 일감"}
-    shorten = lambda s: s if len(s) <= 34 else s[:33] + "…"  # noqa: E731  1365 제목이 길다
-    lines, vol = [], False
+    shorten = lambda s: s if len(s) <= 18 else s[:17] + "…"  # noqa: E731  1365 제목이 길다
     x = g[g["자원후보"] != ""].assign(_o=lambda d: d["신호"].map(SIGNAL_ORDER)).sort_values(["_o", "도시"])
+    html("<div class='bg-sec' style='margin-top:4px'>이 주에 가져갈 것</div>")
     for (sig, city, res), d in x.groupby(["신호", "도시", "자원후보"], sort=False):
-        label, color = SIGNAL[sig]
-        items = " · ".join(ui.esc(shorten(s.strip())) for s in res.split(" · "))
-        vol |= sig in ("주황", "노랑")
-        lines.append(f"<div style='margin:4px 0;font-size:14px'>{ui.badge(label.split(' · ')[0], color)} "
-                     f"<b>{ui.esc(city)}</b> {len(d)}개 집단 — {kind.get(sig, '')}: {items}</div>")
-    html("<div class='bg-sec'>이 주에 가져갈 것 <span style='color:" + ui.MUTE + ";font-weight:400'>"
-         "· 상태별 자원 후보 3개 (거리·반복성·만남 순, 규칙 정렬)</span></div>" + "".join(lines))
-    st.caption("복지로 중앙·지자체 복지서비스(고령 대상만)와 1365 봉사 일감(모집 중만)에서 agent.py가 고른 후보입니다. "
-               "집단 단위라 개인에게 맞춘 추천이 아니고, 실제 연결은 방문한 담당자가 판단합니다."
-               + (" 1365 일감은 2026-10-14 수집 시점에 모집 중인 것이라 시연 기준일(2025년)의 일감이 아닙니다." if vol else ""))
+        chips = "".join(f"<span class='bg-chip' title='{ui.esc(s.strip())}'>{ui.esc(shorten(s.strip()))}</span>"
+                        for s in res.split(" · "))
+        html(f"<div class='bg-res'><div class='h'>{ui.badge(SHORT[sig], SIGNAL[sig][1])} <b>{ui.esc(city)}</b> "
+                     f"<span>{kind.get(sig, '')}</span></div>{chips}</div>")
 
 
-def trend(df: pd.DataFrame, fields: dict[str, str], title: str, sub: str, wk: pd.Timestamp) -> alt.Chart:
+def trend(df: pd.DataFrame, fields: dict[str, str], title: str, sub: str, wk: pd.Timestamp, height: int = 200) -> alt.Chart:
     long = df.melt(id_vars=["week"], value_vars=list(fields), var_name="k", value_name="값")
     long["지표"] = long["k"].map(fields)
     names = list(fields.values())
@@ -338,11 +446,11 @@ def trend(df: pd.DataFrame, fields: dict[str, str], title: str, sub: str, wk: pd
                                                         opacity=1).encode(x="week:T", y="값:Q", color=enc_color)
     rule = alt.Chart(pd.DataFrame({"week": [wk]})).mark_rule(color=ui.MUTE, strokeDash=[3, 3]).encode(x="week:T")
     zero = alt.Chart(pd.DataFrame({"y": [0]})).mark_rule(color="#c9d3df").encode(y="y:Q")
-    return (zero + rule + ln + pt).properties(title=alt.Title(title, subtitle=sub), height=200)
+    return (zero + rule + ln + pt).properties(title=alt.Title(title, subtitle=sub), height=height)
 
 
 def screen_detail():
-    html(ui.heading("②", "발길 상세", "왜 이 집단인가 — 양 · 질 · 연속성 · 터전 네 면과 모델의 근거"))
+    html(ui.topbar("발길 상세", "왜 이 집단인가 — 양 · 질 · 연속성 · 터전 네 면과 모델의 근거"))
     p, s, m = load_weekly(), load_shap(), load_map()
     segs = sorted(s["seg"].unique())
     c1, c2 = st.columns([1, 2])
@@ -357,15 +465,15 @@ def screen_detail():
     row = s[(s["seg"] == seg) & (s["w"] == w)].iloc[0]
     val = lambda f: float(g.loc[g["w"] == w, f].iloc[0])  # noqa: E731
 
-    k = st.columns(4)
-    k[0].markdown(ui.stat("다음 주 좁아짐 상위 진입 확률", f"{row['확률'] * 100:.0f}", "좁아짐 분류 모델", unit="%"),
-                  unsafe_allow_html=True)
-    k[1].markdown(ui.stat("양 · 발길 수", f"{val('breadth_z'):+.2f}", "같은 성·나이 기준 z"), unsafe_allow_html=True)
-    k[2].markdown(ui.stat("질 · 체류 비중", f"{val('stay_z'):+.2f}", "같은 성·나이 기준 z"), unsafe_allow_html=True)
-    k[3].markdown(ui.stat("연속성 · 3주 평균 좁아짐", f"{val('m3'):+.2f}", f"이번 주 {val('narrow'):+.2f}"),
-                  unsafe_allow_html=True)
-    st.write("")
-
+    sv = pd.DataFrame({"변수": [FEATURE_KO[f] for f in FEATURE_KO], "기여": [row[f] for f in FEATURE_KO]})
+    sv["방향"] = np.where(sv["기여"] >= 0, "확률을 높임", "확률을 낮춤")
+    sv = sv.reindex(sv["기여"].abs().sort_values(ascending=False).index).head(6)
+    html(detail_answer(seg, wk, row, val, sv))
+    html(ui.kpis([
+        ui.kpi("다음 주 좁아짐 상위 진입", f"{row['확률'] * 100:.0f}", ui.PRIMARY, "percent", "좁아짐 분류 모델", unit="%"),
+        ui.kpi("양 · 발길 수", f"{val('breadth_z'):+.2f}", SERIES[0], "users", f"z · {side(val('breadth_z'))}"),
+        ui.kpi("질 · 체류 비중", f"{val('stay_z'):+.2f}", "#1baf7a", "home", f"z · {side(val('stay_z'))}"),
+        ui.kpi("연속성 · 3주 평균", f"{val('m3'):+.2f}", SERIES[1], "pulse", f"이번 주 {val('narrow'):+.2f} · 높을수록 좁아짐")]))
     a, b = st.columns(2)
     with a, card("qty"):
         st.altair_chart(trend(g, {"breadth_z": "발길 수"}, "양 — 몇 곳에 닿는가", "유효 발길 수, 나이 보정 z", wk),
@@ -376,7 +484,7 @@ def screen_detail():
     a, b = st.columns(2)
     with a, card("cont"):
         st.altair_chart(trend(g, {"narrow": "이번 주", "m3": "3주 평균"}, "연속성 — 늘 가던 대로 가는가",
-                              "좁아짐 점수 (높을수록 좁아짐)", wk), width="stretch")
+                              "좁아짐 점수 (높을수록 좁아짐)", wk, height=290), width="stretch")  # 옆 터전 카드와 높이를 맞춘다
     city = seg.split()[0]
     weak = m[m["도시"] == city].sort_values("터전순위_통신").head(5)
     with b, card("ground"):
@@ -386,11 +494,8 @@ def screen_detail():
                       [{"동": ui.esc(r.ADM_NM), "터전 순위": f"{r.터전순위_통신}",
                         "체류형 점포 /천명": f"{r.체류형점포_천명당:.1f}", "경로당·마을회관": f"{int(r.경로당수)}"}
                        for r in weak.itertuples()]))
-        st.caption("단위가 다릅니다 — 양·질·연속성은 집단(시군구), 터전은 동. 카드 지표는 동에 붙이지 않습니다.")
+        html(f"<div style='font-size:12px;color:{ui.MUTE};margin-top:8px'>터전이 약한 순 5개 동 · 이 표만 동 단위입니다</div>")
 
-    sv = pd.DataFrame({"변수": [FEATURE_KO[f] for f in FEATURE_KO], "기여": [row[f] for f in FEATURE_KO]})
-    sv["방향"] = np.where(sv["기여"] >= 0, "확률을 높임", "확률을 낮춤")
-    sv = sv.reindex(sv["기여"].abs().sort_values(ascending=False).index).head(6)
     span = float(sv["기여"].abs().max()) * 1.35
     lo, hi = (-span if (sv["기여"] < 0).any() else -span * 0.15), (span if (sv["기여"] > 0).any() else span * 0.15)
     bars = alt.Chart(sv).mark_bar(height=16, cornerRadiusEnd=4).encode(
@@ -408,21 +513,33 @@ def screen_detail():
     # 터전 카드와 SHAP을 한 덩어리로 읽지 않게 단을 나눈다(#14 윤지 — 모델 입력에 터전이 없다)
     html(f"<div class='bg-sec' style='margin-top:8px'>모델 근거 <span style='color:{ui.MUTE};font-weight:400'>"
          f"· 집단(시군구 × 성 × 연령) 단위 — 위 터전 표와 따로 읽습니다</span></div>")
-    left, right = st.columns([3, 2])
-    with left, card("shap"):
+    with card("shap"):
         st.altair_chart((zero + bars + labels).properties(
-            title=alt.Title("무엇이 확률을 움직였나", subtitle="집단 단위 기여도(SHAP) 상위 6개 — 터전 변수는 모델 입력에 없음"),
+            title=alt.Title("무엇이 확률을 움직였나", subtitle="집단 단위 기여도(SHAP) 상위 6개 — 오른쪽(빨강)은 확률을 높이고 왼쪽(파랑)은 낮춥니다"),
             height=240), width="stretch")
-    with right, card("why"):
-        html("<div class='bg-sec'>근거 문장</div>")
-        html(f"<div class='bg-callout'>{ui.esc(seg)}의 {wk:%m/%d} 주 좁아짐 점수는 <b>{val('narrow'):+.2f}</b>, "
-             f"3주 평균은 <b>{val('m3'):+.2f}</b>입니다. 체류 비중은 같은 성·나이 기준 <b>{val('stay_z'):+.2f}</b>, "
-             f"발길 수는 <b>{val('breadth_z'):+.2f}</b>입니다. 다음 주 좁아짐 상위 7칸(32칸의 21.9%)에 들어갈 확률은 "
-             f"<b>{row['확률'] * 100:.0f}%</b>입니다.</div>")
-        st.caption("고정 문장 틀입니다(LLM 아님). 「병원·약국 비중」 막대는 집단 사이 수준이라 "
-                   "\"병원·약국이 그 자리를 채운다\"(집단 안 시간 변화)와 나란히 읽지 않습니다. "
-                   "모델: 재분석 b3 좁아짐 분류(랜덤포레스트, 32칸 × 25주). "
-                   "양성 중 새로 들어온 칸은 31건뿐입니다 — 소표본입니다.")
+    readme(["단위 — 양·질·연속성과 확률은 집단(시군구 × 성 × 연령) 단위이고, 터전은 동 단위입니다. 카드 지표는 동에 붙이지 않고, "
+            "터전 변수는 모델 입력에 없습니다(#14) — 그래서 터전 표와 모델 근거를 한 덩어리로 읽지 않습니다.",
+            "z — 나이 효과를 덜어 낸 표준화 값입니다(같은 성·나이 기준). 0이 기준이고, 음수면 기준보다 낮습니다.",
+            "모델 — 재분석 b3 좁아짐 분류(랜덤포레스트, 32칸 × 25주). 다음 주 좁아짐 상위 7칸(32칸의 21.9%)에 들어갈 확률입니다. "
+            "양성 중 새로 들어온 칸은 31건뿐입니다 — 소표본입니다.",
+            "답 카드의 문장은 고정 문장 틀입니다(LLM 아님). 「병원·약국 비중」 막대는 집단 사이 수준이라 "
+            "\"병원·약국이 그 자리를 채운다\"(집단 안 시간 변화)와 나란히 읽지 않습니다."])
+
+
+def side(z: float) -> str:
+    return "기준보다 낮음" if z < 0 else "기준보다 높음" if z > 0 else "기준과 같음"
+
+
+def detail_answer(seg: str, wk: pd.Timestamp, row: pd.Series, val, sv: pd.DataFrame) -> str:
+    """화면 ② 답 — 확률 한 줄 + 그 확률을 가장 크게 움직인 둘. 수치는 전부 슬롯(E6 5.2)."""
+    top = sv.head(2)
+    why = " · ".join(f"{ui.esc(r.변수)} <b>{r.기여:+.3f}</b> ({'높임' if r.기여 >= 0 else '낮춤'})" for r in top.itertuples())
+    return ui.answer(
+        f"{seg} · {wk:%m/%d} 주",
+        f"다음 주 좁아짐 상위 7칸에 들어갈 확률 <b>{row['확률'] * 100:.0f}%</b>. "
+        f"이번 주 좁아짐 점수 <b>{val('narrow'):+.2f}</b>, 3주 평균 <b>{val('m3'):+.2f}</b>입니다.",
+        f"체류 비중 {val('stay_z'):+.2f} · 발길 수 {val('breadth_z'):+.2f} (같은 성·나이 기준 z) — "
+        f"확률을 가장 크게 움직인 것: {why}")
 
 
 # ── ③ 지도 ─────────────────────────────────────────────────────────────
@@ -491,7 +608,7 @@ def quadrant_chart(p: pd.DataFrame) -> alt.Chart:
 
 
 def screen_map():
-    html(ui.heading("③", "터전 지도", "어느 동에 닿을 곳이 없나 — 47개 행정동 공급 지표와 시설, 자원을 어디에 먼저 둘까"))
+    html(ui.topbar("터전 지도", "어느 동에 닿을 곳이 없나 — 47개 행정동 공급 지표와 시설, 자원을 어디에 먼저 둘까"))
     m, fac, pri = load_map(), load_facilities(), load_priority()
     c1, c2, c3 = st.columns([1, 2, 2])
     city = c1.radio("도시", ["춘천", "강남"], horizontal=True)
@@ -535,6 +652,7 @@ def screen_map():
                                 tooltip=f"{kind} · {r.시설명} ({r.ADM_NM})").add_to(layer)
         layer.add_to(fmap)
 
+    html(map_answer(g, city, col, label, quad))
     left, right = st.columns([3, 2])
     with left, card("map"):
         html(f"<div class='bg-sec'>{ui.esc(city)} · {ui.esc(label)} <span style='color:{ui.MUTE};font-weight:400'>"
@@ -560,12 +678,33 @@ def screen_map():
             map_metric_side(g, city, col, label)
 
 
+def map_answer(g: gpd.GeoDataFrame, city: str, col: str | None, label: str, quad: bool) -> str:
+    """화면 ③ 답 — 대응 모드면 「어디에 먼저」, 지표 모드면 「어디가 가장 낮은가」."""
+    if not quad:
+        low = g.sort_values(col).head(3)
+        names = " · ".join(ui.esc(x) for x in low["ADM_NM"])
+        vals = " · ".join(METRIC_FMT[col].format(v) for v in low[col])
+        return ui.answer(f"{city} · {label}", f"<b>{names}</b>이 {ui.esc(label)} 가장 낮은 세 동입니다.",
+                         f"값 {vals} — 한 지표만으로 순서를 정하지 않습니다. 순서는 「{QUAD_MODE}」에서 봅니다")
+    p = g.sort_values("우선순위")
+    short = p["사분면"].isin(["1순위", "형평"])
+    first = p[short].head(3)
+    r = load_reach()
+    r = r[(r["도시"] == city) & r["규칙"].str.startswith("우선순위")].set_index("k")["도달 효율"]
+    share = p.loc[short, "고령1인세대수"].sum() / p["고령1인세대수"].sum() * 100
+    n_eq = int((p["사분면"] == "형평").sum())
+    names = " · ".join(ui.esc(x) for x in first["ADM_NM"])
+    return ui.answer(
+        f"{city} · 자원을 어디에 먼저",
+        f"<b>{names}</b>부터 두세요. 공급 부족 동 가운데 무작위로 3곳을 고를 때보다 "
+        f"고령 1인세대에 <b>{r[3]:.2f}배</b> 닿습니다.",
+        f"공급 부족 {int(short.sum())}개 동에 {city} 고령 1인세대의 {share:.1f}%가 삽니다 · "
+        f"형평 칸 {n_eq}곳은 사람이 적어도 다른 길이 없어 찾아가는 형태로 둡니다")
+
+
 def map_metric_side(g: gpd.GeoDataFrame, city: str, col: str, label: str):
-    k = st.columns(2)
-    k[0].markdown(ui.stat("경로당·마을회관", f"{int(g['경로당수'].sum())}", f"{city} {len(g)}개 동", dot=FAC_COLOR["경로당"]),
-                  unsafe_allow_html=True)
-    k[1].markdown(ui.stat("도서관", f"{int(g['도서관수'].sum())}", "공공·작은·어린이", dot=FAC_COLOR["도서관"]),
-                  unsafe_allow_html=True)
+    html(ui.kpis([ui.kpi("경로당·마을회관", f"{int(g['경로당수'].sum())}", FAC_COLOR["경로당"], "home", f"{city} {len(g)}개 동"),
+                  ui.kpi("도서관", f"{int(g['도서관수'].sum())}", FAC_COLOR["도서관"], "grid", "공공·작은·어린이")]))
     st.write("")
     html(f"<div class='bg-sec'>{ui.esc(label)} 낮은 동 5곳</div>")
     t = g.sort_values(col).head(5)
@@ -576,7 +715,7 @@ def map_metric_side(g: gpd.GeoDataFrame, city: str, col: str, label: str):
     st.write("")
     html("<div class='bg-callout'>체류형 점포와 경로당·마을회관은 <b>방향이 반대</b>입니다(춘천 스피어만 −0.79, 상가 × 시설). "
          "면 지역은 가게가 적은 대신 60세 이상 천 명당 경로당이 많아, 한 지수로 더하지 않고 따로 봅니다.</div>")
-    st.caption("사회복지시설은 공개 데이터에 좌표가 없어 넣지 않았습니다. 경로당 목록 기준일이 강남 2024-07, 춘천 2025-07로 다릅니다.")
+    readme(["사회복지시설은 공개 데이터에 좌표가 없어 넣지 않았습니다. 경로당 목록 기준일이 강남 2024-07, 춘천 2025-07로 다릅니다."])
 
 
 def map_quadrant_side(g: gpd.GeoDataFrame, city: str):
@@ -585,11 +724,9 @@ def map_quadrant_side(g: gpd.GeoDataFrame, city: str):
     r = r[(r["도시"] == city) & r["규칙"].str.startswith("우선순위")].set_index("k")["도달 효율"]
     short = p["사분면"].isin(["1순위", "형평"])
     share = p.loc[short, "고령1인세대수"].sum() / p["고령1인세대수"].sum() * 100
-    k = st.columns(2)
-    k[0].markdown(ui.stat("도달 효율 · 우선순위 3곳", f"{r[3]:.2f}", f"5곳 {r[5]:.2f}배 · 부족 동 무작위 대비",
-                          unit="배"), unsafe_allow_html=True)
-    k[1].markdown(ui.stat("공급 부족 동의 고령 1인세대", f"{share:.1f}", f"{city} {int(short.sum())}개 동에 사는 비중",
-                          unit="%"), unsafe_allow_html=True)
+    html(ui.kpis([ui.kpi("도달 효율 · 우선순위 3곳", f"{r[3]:.2f}", ui.PRIMARY, "trend", f"5곳이면 {r[5]:.2f}배", unit="배"),
+                  ui.kpi("부족 동의 고령 1인세대", f"{share:.1f}", "#1baf7a", "users", f"{city} 부족 {int(short.sum())}개 동",
+                         unit="%")]))
     st.write("")
     with card("quad"):
         html(f"<div class='bg-sec'>공급 × 필요 <span style='color:{ui.MUTE};font-weight:400'>· {city} {len(p)}개 동, "
@@ -597,15 +734,16 @@ def map_quadrant_side(g: gpd.GeoDataFrame, city: str):
         st.altair_chart(quadrant_chart(p), width="stretch")  # 범례는 지도 아래와 같다 — 칸 이름은 모서리 글자로
     st.write("")
     html("<div class='bg-sec'>먼저 둘 동 — 공급 부족 동</div>")
-    html(ui.table([("순위", "n"), ("동", ""), ("대응", ""), ("터전 순위", "n"), ("고령 1인세대", "n")],
-                  [{"순위": f"{int(x.우선순위)}", "동": ui.esc(x.ADM_NM),
+    html(ui.table([("순위", "n"), ("동", ""), ("대응", ""), ("고령 1인세대", "n")],
+                  [{"순위": f"{int(x.우선순위)}", "동": f"<span style='white-space:nowrap'>{ui.esc(x.ADM_NM)}</span>",
                     "대응": ui.badge(QUAD[x.사분면][1], QUAD[x.사분면][0]),
-                    "터전 순위": f"{x.터전순위_통신}", "고령 1인세대": f"{int(x.고령1인세대수):,}"}
+                    "고령 1인세대": f"{int(x.고령1인세대수):,}"}
                    for x in p[short].head(6).itertuples()]))
-    st.caption("공급 부족 = 통신 터전 순위 하위 절반, 필요 큼 = 고령 1인세대 수가 도시 중앙값 이상(build_priority.py). "
-               "1순위는 거점·정기 프로그램, 형평은 사람은 적어도 다른 길이 없는 곳이라 찾아가는 형태로 둡니다. "
-               "터전 하위 동만 고르면 무작위와 다르지 않아, 터전은 효율이 아니라 형평의 근거로 씁니다. "
-               "출처 data/reference/dong_priority.csv · reach_efficiency.csv")
+    readme(["공급 부족 = 통신 터전 순위 하위 절반, 필요 큼 = 고령 1인세대 수가 도시 중앙값 이상(build_priority.py). "
+            "1순위는 거점·정기 프로그램, 형평은 사람은 적어도 다른 길이 없는 곳이라 찾아가는 형태로 둡니다.",
+            "도달 효율 = 우선순위 k개 동의 고령 1인세대 ÷ 공급 부족 동 안에서 무작위로 k개를 고를 때의 기댓값. "
+            "터전 하위 동만 고르면 무작위와 다르지 않아, 터전은 효율이 아니라 형평의 근거로 씁니다.",
+            "출처 data/reference/dong_priority.csv · reach_efficiency.csv"])
 
 
 # ── ④ 보정 전·후 ───────────────────────────────────────────────────────
@@ -620,25 +758,27 @@ def cut_rate(v: float) -> str:
 
 
 def screen_correction():
-    html(ui.heading("④", "보정 전·후", "헛알림을 얼마나 지웠나 — 명절·공휴일처럼 모두가 함께 줄어드는 날을 먼저 지운다"))
+    html(ui.topbar("보정 전·후", "헛알림을 얼마나 지웠나 — 명절·공휴일처럼 모두가 함께 줄어드는 날을 먼저 지운다"))
     c1, c2 = st.columns([3, 2])
     step = c1.radio("보정 단계", list(STEPS), index=0, horizontal=True)
     nomed = c2.toggle("병원·약국을 필수 발길에서 분리", value=False)
     b, fa = load_breaks(nomed), load_false_alarm(nomed)
-    base, cur = fa.loc["(0) 보정 없음"], fa.loc[STEPS[step]]
-    is_base = step == "보정 없음"
 
-    k = st.columns(3)
-    k[0].markdown(ui.stat("전체 알림", f"{int(cur['전체 알림'])}", "집단 × 일" if is_base else
-                          f"보정 없음 {int(base['전체 알림'])}에서 {int(cur['전체 알림'] - base['전체 알림']):+d}"),
-                  unsafe_allow_html=True)
-    k[1].markdown(ui.stat("공통 사건 주간 알림", f"{int(cur.iloc[1])}", "추석·광복절·성탄 뒤 7일" if is_base else
-                          f"보정 없음 {int(base.iloc[1])}에서 {int(cur.iloc[1] - base.iloc[1]):+d}", dot=CRITICAL),
-                  unsafe_allow_html=True)
-    rate = (1 - cur.iloc[1] / base.iloc[1]) * 100
-    k[2].markdown(ui.stat("공통 사건 주간 감소율", "—" if is_base else f"{rate:.0f}".replace("-", "−"),
-                          "기준 단계" if is_base else "보정 없음 대비" + (" · 오히려 늘어남" if rate < 0 else ""),
-                          unit="" if is_base else "%"), unsafe_allow_html=True)
+    n0, n1, n2 = (int(fa.iloc[i, 0]) for i in range(3))
+    h0, h2 = int(fa.iloc[0, 1]), int(fa.iloc[2, 1])
+    keys = list(STEPS)
+    html(ui.answer(
+        "헛알림을 얼마나 지웠나" + (" · 병원·약국 분리" if nomed else ""),
+        f"알림 <b>{n0} → {n2}</b>. 공통 사건 주간(추석·광복절·성탄 뒤 7일) 알림은 <b>{h0} → {h2}</b>로 "
+        f"<b>{cut_rate(fa.iloc[2, 3])}</b> 줄었습니다.",
+        ("계절만 보정하면 오히려 늘고" if n1 > n0 else "계절 보정만으로는 거의 줄지 않고")
+        + ", 같은 도시 30·40대가 함께 줄어든 만큼을 빼야 줄어듭니다 — 위 「보정 단계」로 한 단계씩 볼 수 있습니다",
+        [(f"{k} · 알림 {int(fa.iloc[i, 0])}",
+          f"공통 사건 주간 {int(fa.iloc[i, 1])} · 그 밖의 날 {int(fa.iloc[i, 2])}"
+          + ("" if i == 0 else f" · 감소율 {cut_rate(fa.iloc[i, 3])}") + f"<br>{how}", step == k)
+         for i, (k, how) in enumerate(zip(keys, ["평소 흔들림과 견준 그대로",
+                                                 "앞뒤 4주 같은 요일과 견줌",
+                                                 "같은 도시 30·40대의 같은 종류 발길 변화를 뺌"]))]))
     st.write("")
 
     d = b[["date", "seg", "holwk", STEP_COL[step]]].rename(columns={STEP_COL[step]: "alert"})
@@ -662,28 +802,17 @@ def screen_correction():
             title=alt.Title("집단 × 날짜 알림", subtitle=f"{step}{' · 병원·약국 분리' if nomed else ''} — 빨간 칸이 끊김 판정"),
             height=330), width="stretch")
         html(ui.legend([("알림 (끊김 판정)", CRITICAL), ("공통 사건 주간 (추석·광복절·성탄 뒤 7일)", SHADE)]))
-    n0, n1, n2 = (int(fa.iloc[i, 0]) for i in range(3))
-    st.caption(f"보정을 끄면 추석 주간이 알림으로 뒤덮입니다. 계절형 보정만으로는 줄지 않고({n0} → {n1}), 같은 도시 "
+    readme([f"보정을 끄면 추석 주간이 알림으로 뒤덮입니다. 계절형 보정만으로는 줄지 않고({n0} → {n1}), 같은 도시 "
                f"30·40대가 함께 줄어든 만큼을 빼는 공통 충격 보정에서 {n2}로 줄어듭니다. 병원·약국 분리는 네 번째 단계가 아니라 "
                "같은 세 단계를 다시 잰 다른 축입니다(오른쪽 위 스위치). "
-               f"출처: 재분석 b2 (reanalysis/reference/{'nomed_' if nomed else ''}false_alarm.csv).")
-    st.write("")
-    html("<div class='bg-sec'>보정 단계별 알림 수</div>")
-    html(ui.table([("보정 단계", ""), ("전체 알림", "n"), ("공통 사건 주간", "n"), ("그 밖의 날", "n"), ("공통 사건 주간 감소율", "n")],
-                  [{"보정 단계": ui.esc(i), "전체 알림": f"{int(r.iloc[0])}", "공통 사건 주간": f"{int(r.iloc[1])}",
-                    "그 밖의 날": f"{int(r.iloc[2])}", "공통 사건 주간 감소율": "—" if n == 0 else cut_rate(r.iloc[3])}
-                   for n, (i, r) in enumerate(fa.iterrows())]))
+               f"출처: 재분석 b2 (reanalysis/reference/{'nomed_' if nomed else ''}false_alarm.csv)."])
 
 
 # ── 화면 ───────────────────────────────────────────────────────────────
-html(ui.hero("발길", "담당자 화면", "집단 지표는 실제 분석 결과(신한카드·SK·상가·공공데이터)이고, 개인 단위 사례는 모두 "
-             "<b>가상</b>입니다. 수치는 최종 수치표(10/17 동결)와 같습니다.", "시연용"))
-SCREENS = {"① 주간 브리핑": screen_briefing, "② 발길 상세": screen_detail, "③ 터전 지도": screen_map,
-           "④ 보정 전·후": screen_correction}
-only = st.query_params.get("screen")  # ?screen=1~4 → 그 화면만 (캡처·데모용)
-if only in {"1", "2", "3", "4"}:
-    list(SCREENS.values())[int(only) - 1]()
-else:
-    for tab, draw in zip(st.tabs(list(SCREENS)), SCREENS.values()):
-        with tab:
-            draw()
+SCREENS = [("주간 브리핑", "home", screen_briefing), ("발길 상세", "pulse", screen_detail),
+           ("터전 지도", "map", screen_map), ("보정 전·후", "sliders", screen_correction)]
+q = st.query_params.get("screen", "1")  # ?screen=1~4 — 왼쪽 메뉴도 이 주소로 간다(캡처·데모와 같은 길)
+n = int(q) if q in {"1", "2", "3", "4"} else 1
+with st.sidebar:
+    html(ui.sidebar(n, [(t, ic) for t, ic, _ in SCREENS]))
+SCREENS[n - 1][2]()
