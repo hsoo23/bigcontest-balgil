@@ -2,7 +2,7 @@
 
 배치는 SaaS 대시보드 틀(왼쪽 메뉴 · 위 제목줄 · 큰 답 카드 · 색 타일 숫자 · 오른쪽 할 일 타임라인)을 따른다
 (Figma 커뮤니티 「Saas Task Management Dashboard Design」을 참고했고, 그림·아이콘은 가져오지 않고 새로 그렸다).
-발길의 표지는 발자국 둘(logo_svg) — 메뉴 머리와 답 카드의 발자국 길에 쓴다.
+발길의 표지는 신발 자국 한 쌍(logo_svg) — 메뉴 머리와 답 카드의 발자국 길에 쓴다.
 아래는 처음 겉모양(Stripe DESIGN.md)에서 그대로 둔 원칙이다.
 
 크롬(바탕·글자·카드·탭)만 Stripe 토큰을 쓴다. 데이터 색(신호·지도·차트)은 balgil_app.py의
@@ -385,33 +385,43 @@ def icon(name: str) -> str:
             f'stroke-linejoin="round">{_ICON[name]}</svg>')
 
 
-# 강아지 발바닥 하나 — 아래 큰 볼록살(둥근 하트 모양)과 위 발가락 넷. 원점이 발바닥 가운데다
-_PAW = ('<path d="M0 1.5 C-4.6 1.5 -8.6 6.2 -8.6 9.6 C-8.6 12.4 -6.2 13.6 -3.6 13.2 C-2.2 13 -1.2 12.4 0 12.4 '
-        'C1.2 12.4 2.2 13 3.6 13.2 C6.2 13.6 8.6 12.4 8.6 9.6 C8.6 6.2 4.6 1.5 0 1.5Z"/>'
-        '<ellipse cx="-9.4" cy="-2.6" rx="2.9" ry="3.7" transform="rotate(-22 -9.4 -2.6)"/>'
-        '<ellipse cx="-3.6" cy="-7.4" rx="3.1" ry="4" transform="rotate(-6 -3.6 -7.4)"/>'
-        '<ellipse cx="3.6" cy="-7.4" rx="3.1" ry="4" transform="rotate(6 3.6 -7.4)"/>'
-        '<ellipse cx="9.4" cy="-2.6" rx="2.9" ry="3.7" transform="rotate(22 9.4 -2.6)"/>')
+# 신발 자국 하나 — 앞창(발끝이 넓고 아치 쪽으로 좁아짐)과 떨어진 뒷굽. 원점이 가운데, 발끝이 위(-y)다.
+# 왼발 기준으로 그리고 오른발은 좌우를 뒤집는다(flip)
+_SHOE = ('<path d="M-1 -14 C5 -14 7.2 -8 6.6 -3 C6.1 1 4.4 4 3.2 5 L-3.6 5 C-5.2 2 -6.2 -3 -6.1 -6.2 '
+         'C-6 -11 -4.4 -14 -1 -14Z"/>'
+         '<path d="M-3.7 7.2 L3.3 7.2 C3.8 10.2 2.7 13.6 -0.3 13.6 C-3.3 13.6 -4.3 10.2 -3.7 7.2Z"/>')
 
 
-def paw(x: float, y: float, rot: float, color: str, op: float = 1.0, scale: float = 1.0) -> str:
-    return (f'<g transform="translate({x} {y}) rotate({rot}) scale({scale})" fill="{color}" opacity="{op}">'
-            f'{_PAW}</g>')
+def shoe(x: float, y: float, rot: float, color: str, op: float = 1.0, scale: float = 1.0, flip: bool = False) -> str:
+    sx = -scale if flip else scale
+    return (f'<g transform="translate({x} {y}) rotate({rot}) scale({sx} {scale})" fill="{color}" opacity="{op}">'
+            f'{_SHOE}</g>')
 
 
 def logo_svg(size: int = 40) -> str:
-    """발길 표지 — 보라 둥근 칸 안에 흰 강아지 발바닥 하나."""
+    """발길 표지 — 동그라미 안에 흰 신발 자국 한 쌍(왼발 아래, 오른발이 한 걸음 앞)."""
     return (f'<svg width="{size}" height="{size}" viewBox="0 0 40 40"><defs><linearGradient id="lg" x1="0" y1="0" x2="0" y2="1">'
             f'<stop offset="0" stop-color="#f8b4a0"/><stop offset="1" stop-color="{PEACH}"/></linearGradient></defs>'
-            f'<circle cx="20" cy="20" r="20" fill="url(#lg)"/>' + paw(20, 19.5, -8, "#fff", 1, 1.0) + '</svg>')
+            f'<circle cx="20" cy="20" r="20" fill="url(#lg)"/>'
+            + shoe(15.2, 22.5, 18, "#fff", 1, 0.62) + shoe(24.6, 17.5, 18, "#fff", 1, 0.62, flip=True) + '</svg>')
 
 
 def trail_svg() -> str:
-    """답 카드 오른쪽 그림 — 왼쪽 아래에서 오른쪽 위로 이어지다 흐려지는 발바닥 길(발길이 좁아지고 끊기는 모양)."""
-    steps = [(28, 128, 40, 1.0), (64, 112, 48, 0.9), (86, 82, 40, 0.75), (122, 70, 48, 0.58),
-             (142, 42, 40, 0.4), (178, 32, 48, 0.24)]
-    g = "".join(paw(x, y, r, PRIMARY if i % 2 else "#a29bfe", op, 1.15) for i, (x, y, r, op) in enumerate(steps))
-    return (f'<svg viewBox="0 0 210 150" width="170"><circle cx="142" cy="78" r="62" fill="{PRIMARY_SOFT_BG}"/>{g}</svg>')
+    """답 카드 오른쪽 그림 — 왼쪽 아래에서 오른쪽 위로 걸어가다 흐려지는 신발 자국 네 쌍(발길이 좁아지고 끊기는 모양).
+    발끝은 걷는 방향(rot)을 보고, 왼발은 진행 방향의 왼쪽, 오른발은 오른쪽에 반걸음 앞서 놓는다."""
+    import math
+    (x0, y0), (x1, y1) = (34, 124), (200, 18)
+    ang = math.degrees(math.atan2(x1 - x0, y0 - y1))            # 위(-y)에서 시계 방향 각
+    dx, dy = (x1 - x0), (y1 - y0)
+    n = math.hypot(dx, dy)
+    ux, uy = dx / n, dy / n                                      # 진행 방향
+    lx, ly = uy, -ux                                             # 진행 방향의 왼쪽
+    g = ""
+    for i, op in enumerate([1.0, 0.72, 0.45, 0.2]):
+        cx, cy = x0 + dx * i / 3.4, y0 + dy * i / 3.4
+        g += shoe(cx + lx * 7, cy + ly * 7, ang, PRIMARY, op, 1.0)
+        g += shoe(cx - lx * 7 + ux * 12, cy - ly * 7 + uy * 12, ang, "#a29bfe", op, 1.0, flip=True)
+    return (f'<svg viewBox="0 0 220 150" width="170"><circle cx="140" cy="78" r="62" fill="{PRIMARY_SOFT_BG}"/>{g}</svg>')
 
 
 def sidebar(active: int, items: list[tuple[str, str]], theme: str = "") -> str:
