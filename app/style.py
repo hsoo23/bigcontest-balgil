@@ -526,68 +526,75 @@ div.st-key-card, div[class*="st-key-card"], .bg-board, .bg-tl, .bg-res, .bg-hero
 </style>""").format(**_LILAC)
 
 
-# 발표자료(발길_발표자료_최종.pdf)와 같은 색 — 짙은 남색 · 하늘색 · 옅은 하늘색 · 흰 바탕, 모서리가 거의 각진 상자.
-# 발표 장표와 화면 캡처를 한 장에 놓아도 한 벌로 보이게 한다. 그라데이션은 쓰지 않는다
-_DECK = dict(navy="#0a2647", navy2="#123a63", sky="#6cb5ea", sky_d="#3d8fd1", pale="#eaf4fc", bg="#f4f7fb",
-             line="#d6dfea", ink="#0a2647", mute="#5d6f86")
+# 발표자료(발길_발표자료_최종.pdf)와 같은 색 — 짙은 남색 · 하늘색 · 옅은 하늘색. 모양(둥근 모서리 · 옅은 그림자 ·
+# 둥근 글꼴 · 채운 타일)은 크림 · 라일락과 같게 두고 색만 바꾼다. 그라데이션은 쓰지 않는다
+_DECK = dict(navy="#0a2647", navy2="#16395f", sky="#6cb5ea", sky_d="#3d8fd1", sky_m="#cfe5f7", pale="#eaf4fc",
+             bg="#f3f7fb", line="#e1e9f2", ink="#0a2647", mute="#5d6f86")
 DECK_CSS = ("""<style>
-html, body, [class*="st-"], .stApp, button, input, textarea, select {{ font-family:'Pretendard Variable', Pretendard, -apple-system, system-ui, sans-serif !important; }}
-[data-testid="stIconMaterial"], .material-symbols-rounded, [class*="material-symbols"] {{ font-family:"Material Symbols Rounded" !important; }}
 .stApp {{ background:{bg} !important; }}
 [data-testid="stSidebar"] {{ background:{navy} !important; border-right:none !important; }}
 .bg-logo svg circle, .bg-logo svg rect {{ fill:{sky} !important; }}
-.bg-logo .t {{ color:{sky} !important; font-weight:800; }} .bg-logo .s {{ color:#b9c8da !important; }}
+.bg-logo .t {{ color:#fff !important; }} .bg-logo .s {{ color:#a9bcd3 !important; }}
 .bg-navh {{ color:#8ea3bd !important; }}
-.bg-nav a {{ color:#d5dfeb !important; border-radius:6px !important; }}
+.bg-nav a {{ color:#d5dfeb !important; }}
 .bg-nav a:hover {{ background:{navy2} !important; color:#fff !important; }}
-.bg-nav a.on {{ background:{sky} !important; color:{navy} !important; box-shadow:none !important; font-weight:800; }}
-.bg-side-note {{ background:{navy2} !important; color:#d5dfeb !important; border:1px solid #2a5480 !important; border-radius:6px !important; }}
+.bg-nav a.on {{ background:{sky} !important; color:{navy} !important; box-shadow:0 6px 16px rgba(108,181,234,.35) !important; }}
+.bg-side-note {{ background:{navy2} !important; color:#d5dfeb !important; border:none !important; }}
 .bg-side-note b {{ color:{sky} !important; }} .bg-side-note u {{ text-decoration-color:{sky} !important; }}
-.bg-team {{ background:transparent !important; border:1px solid #2a5480 !important; color:#fff !important; border-radius:6px !important; }}
+.bg-team {{ background:{navy2} !important; border:none !important; color:#fff !important; }}
 .bg-team i {{ background:{sky} !important; color:{navy} !important; }} .bg-team span {{ color:#8ea3bd !important; }}
 .bg-theme {{ color:#8ea3bd !important; }}
-.bg-theme a {{ border-color:#2a5480 !important; color:#d5dfeb !important; }}
+.bg-theme a {{ border-color:#2f5680 !important; color:#d5dfeb !important; }}
 .bg-theme a.on {{ background:{sky} !important; color:{navy} !important; border-color:{sky} !important; }}
 
-.bg-top .t {{ color:{ink} !important; font-weight:800 !important; letter-spacing:-0.8px; }}
+.bg-top .t, .bg-sec {{ color:{ink} !important; }}
 .bg-top .s, .bg-sec span {{ color:{mute} !important; }}
-.bg-sec {{ color:{ink} !important; }}
-div.st-key-card, div[class*="st-key-card"], .bg-board, .bg-tl, .bg-res, [data-testid="stExpander"] details {{
-  background:#fff !important; border:1px solid {line} !important; border-radius:6px !important; box-shadow:none !important; }}
-.bg-table {{ border-radius:4px !important; box-shadow:none !important; border:1px solid {line} !important; }}
-.bg-table th {{ background:{navy} !important; color:#fff !important; font-weight:600; }}
-.bg-heroc {{ background:{navy} !important; border:none !important; border-radius:6px !important; box-shadow:none !important; }}
-.bg-heroc .k {{ color:#8ea3bd !important; }} .bg-heroc .t {{ color:#fff !important; }} .bg-heroc .s {{ color:#c7d4e3 !important; }}
+div.st-key-card, div[class*="st-key-card"], .bg-board, .bg-tl, .bg-res, .bg-table, [data-testid="stExpander"] details {{
+  background:#fff !important; border-radius:22px !important; box-shadow: rgba(10,38,71,0.06) 0 6px 20px !important; }}
+.bg-table {{ border-radius:16px !important; }}
+.bg-table th {{ background:{pale} !important; color:{navy} !important; }}
+.bg-heroc {{ background:{navy} !important; border-radius:24px !important; box-shadow: rgba(10,38,71,0.18) 0 10px 28px !important; }}
+.bg-heroc .k {{ color:#a9bcd3 !important; }} .bg-heroc .t {{ color:#fff !important; }} .bg-heroc .s {{ color:#c7d4e3 !important; }}
 .bg-heroc .t b, .bg-heroc .s b {{ color:{sky} !important; }}
 .bg-heroc .art svg circle {{ fill:{navy2} !important; }}
-.bg-heroc .art svg g {{ fill:#4f86b8 !important; }}
-.bg-heroc .bg-step {{ background:{navy2} !important; border:1px solid #2a5480 !important; border-radius:6px !important; }}
+.bg-heroc .art svg g {{ fill:{sky} !important; }}
+.bg-heroc .bg-step {{ background:{navy2} !important; border:none !important; border-radius:16px !important; }}
 .bg-heroc .bg-step .h {{ color:#fff !important; }} .bg-heroc .bg-step .d {{ color:#b9c8da !important; }}
 .bg-heroc .bg-step .n {{ background:transparent !important; border-color:#5f86ad !important; color:#b9c8da !important; }}
-.bg-heroc .bg-step.on {{ background:{sky} !important; border-color:{sky} !important; }}
+.bg-heroc .bg-step.on {{ background:{sky} !important; }}
 .bg-heroc .bg-step.on .h, .bg-heroc .bg-step.on .d {{ color:{navy} !important; }}
 .bg-heroc .bg-step.on .n {{ background:{navy} !important; border-color:{navy} !important; color:#fff !important; }}
 
-.bg-kpi {{ background:#fff !important; border:1.5px solid {navy} !important; border-radius:6px !important; box-shadow:none !important; }}
-.bg-kpis .bg-kpi:first-child {{ background:{navy} !important; }}
-.bg-kpis .bg-kpi:first-child .v, .bg-kpis .bg-kpi:first-child .v small {{ color:{sky} !important; }}
-.bg-kpis .bg-kpi:first-child .l {{ color:#fff !important; }} .bg-kpis .bg-kpi:first-child .d {{ color:#b9c8da !important; }}
-.bg-kpi .ic {{ border-radius:6px !important; background-image:none !important; box-shadow:none !important; }}
-.bg-kpi .ic {{ background:{navy} !important; }}
-.bg-kpis .bg-kpi:first-child .ic {{ background:{sky} !important; }}
-.bg-kpis .bg-kpi:first-child .ic svg {{ color:{navy} !important; }}
-.bg-kpi .v {{ color:{ink} !important; }} .bg-kpi .l {{ color:{ink} !important; }} .bg-kpi .d {{ color:{mute} !important; }}
+/* 숫자 타일 — 라일락과 같은 꼴(왼쪽 아이콘 원 + 오른쪽 숫자), 색만 남색 · 하늘 · 옅은 하늘 */
+.bg-kpi {{ display:grid !important; grid-template-columns:40px minmax(0, 1fr); grid-template-rows:auto auto auto;
+  column-gap:12px !important; row-gap:0; align-items:center; align-content:center; justify-items:start; text-align:left;
+  border:none !important; box-shadow:none !important; border-radius:20px !important; padding:16px 14px !important; }}
+.bg-kpi .ic {{ grid-column:1; grid-row:1 / span 3; width:40px !important; height:40px !important; border-radius:50% !important;
+  margin:0 !important; background-image:none !important; box-shadow:none !important; }}
+.bg-kpi .v {{ grid-column:2; grid-row:1; }}
+.bg-kpi .l {{ grid-column:2; grid-row:2; margin:3px 0 0 !important; white-space:normal !important; word-break:keep-all; line-height:1.3; }}
+.bg-kpi .d {{ grid-column:2; grid-row:3; }}
+.bg-kpis .bg-kpi:nth-child(1) {{ background:{navy} !important; }}
+.bg-kpis .bg-kpi:nth-child(1) .ic {{ background:{sky} !important; }} .bg-kpis .bg-kpi:nth-child(1) .ic svg {{ color:{navy} !important; }}
+.bg-kpis .bg-kpi:nth-child(1) .v, .bg-kpis .bg-kpi:nth-child(1) .v small {{ color:{sky} !important; }}
+.bg-kpis .bg-kpi:nth-child(1) .l {{ color:#fff !important; }} .bg-kpis .bg-kpi:nth-child(1) .d {{ color:#a9bcd3 !important; }}
+.bg-kpis .bg-kpi:nth-child(2) {{ background:{sky} !important; }}
+.bg-kpis .bg-kpi:nth-child(3) {{ background:{sky_m} !important; }}
+.bg-kpis .bg-kpi:nth-child(4) {{ background:{pale} !important; }}
+.bg-kpis .bg-kpi:not(:first-child) .ic {{ background:{navy} !important; }}
+.bg-kpis .bg-kpi:not(:first-child) .v, .bg-kpis .bg-kpi:not(:first-child) .v small,
+.bg-kpis .bg-kpi:not(:first-child) .l {{ color:{navy} !important; }}
+.bg-kpis .bg-kpi:not(:first-child) .d {{ color:#33506f !important; }}
 
-.bg-tl .box {{ background:{bg} !important; border-left-color:{line} !important; border-radius:2px 6px 6px 2px !important; }}
+.bg-tl .box {{ background:{bg} !important; border-left-color:{line} !important; }}
 .bg-tl .it.on .box {{ background:{pale} !important; border-left-color:{sky_d} !important; }}
 .bg-tl .it.on .n {{ background:{navy} !important; border-color:{navy} !important; color:#fff !important; }}
-.bg-tl .n {{ border-radius:4px !important; }}
-.bg-tile {{ background:{bg}; border-radius:4px !important; }}
+.bg-tile {{ background:{bg}; }}
 .bg-tile.calm {{ background:{bg} !important; }}
-.bg-tl .n {{ background:#fff; }}
-.bg-chip {{ background:{pale} !important; border-color:#cfe3f5 !important; color:{navy} !important; border-radius:4px !important; }}
-.bg-plist .av {{ border-radius:4px !important; }}
-.bg-steps .bg-step {{ border-radius:6px !important; }}
+.bg-tl .n {{ background:#fff !important; border-color:{line} !important; }}
 [data-testid="stSlider"] [role="slider"] {{ background:{sky_d} !important; }}
-.bg-badge {{ border-radius:4px !important; }}
+.bg-chip {{ background:{pale} !important; border-color:#d6e8f7 !important; color:{navy} !important; }}
+.bg-steps .bg-step {{ background:{bg} !important; border-color:{line} !important; }}
+.bg-steps .bg-step.on {{ background:{pale} !important; border-color:#cfe3f5 !important; }}
+.bg-steps .bg-step.on .n {{ background:{navy} !important; border-color:{navy} !important; }}
 </style>""").format(**_DECK)
