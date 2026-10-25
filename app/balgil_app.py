@@ -813,10 +813,10 @@ SCREENS = [("주간 브리핑", "home", screen_briefing), ("발길 상세", "pul
            ("터전 지도", "map", screen_map), ("보정 전·후", "sliders", screen_correction)]
 q = st.query_params.get("screen", "1")  # ?screen=1~4 — 왼쪽 메뉴도 이 주소로 간다(캡처·데모와 같은 길)
 n = int(q) if q in {"1", "2", "3", "4"} else 1
-theme = st.query_params.get("theme", "")  # ?theme=lilac — 두 번째 색 (팀이 고르기 전까지 나란히)
-theme = theme if theme in ui.THEMES else ""
-if theme == "lilac":
-    st.html(ui.LILAC_CSS)
+theme = st.query_params.get("theme", "deck")  # ?theme=deck|cream|lilac — 팀이 고르기 전까지 나란히 본다
+theme = theme if theme in ui.THEMES else "deck"
+if theme != "cream":
+    st.html({"deck": ui.DECK_CSS, "lilac": ui.LILAC_CSS}[theme])
 with st.sidebar:
     html(ui.sidebar(n, [(t, ic) for t, ic, _ in SCREENS], theme))
 SCREENS[n - 1][2]()
