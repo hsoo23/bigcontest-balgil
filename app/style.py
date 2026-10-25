@@ -475,10 +475,10 @@ def timeline(title: str, sub: str, items: list[tuple[str, str, bool]]) -> str:
 
 
 # ── 테마 둘 — 팀이 고르기 전까지 나란히 본다 (?theme=lilac) ─────────────
-THEMES = {"deck": "발표자료", "cream": "크림", "lilac": "라일락"}   # 맨 앞이 기본
+THEMES = {"deck": "발표자료", "cream": "크림", "lilac": "라일락", "sky": "하늘"}   # 맨 앞이 기본
 _LILAC = dict(bg="#f4f4f8", card="#ffffff", line="#ebebf2", primary="#7a6ff0", deep="#5f54e0", soft="#efedfd",
               tiles=["#958cf2", "#ee8f84", "#efa86a", "#59bd8c"])   # 라일락 · 연어 · 살구 · 민트 (흰 글자 3:1 안팎)
-LILAC_CSS = ("""<style>
+LILAC_TEMPLATE = ("""<style>
 .stApp {{ background:{bg} !important; }}
 [data-testid="stSidebar"] {{ background:{card} !important; border-right:1px solid {line} !important; }}
 .bg-logo svg circle, .bg-logo svg rect {{ fill:{primary} !important; }}
@@ -523,7 +523,14 @@ div.st-key-card, div[class*="st-key-card"], .bg-board, .bg-tl, .bg-res, .bg-hero
 .bg-steps .bg-step.on {{ background:{soft} !important; border-color:#d9d5fb !important; }}
 .bg-steps .bg-step.on .n {{ background:{primary} !important; border-color:{primary} !important; }}
 [data-testid="stSlider"] [role="slider"] {{ background:{primary} !important; }}
-</style>""").format(**_LILAC)
+</style>""")
+LILAC_CSS = LILAC_TEMPLATE.format(**_LILAC)
+# 「하늘」 — 라일락에서 연보라 부분만 연하늘(#d3e4f5)로. 그 위의 보라 글자 · 아이콘 · 첫 타일도 같은 계열 하늘로 맞춘다
+_SKY = dict(_LILAC, primary="#4f8fcf", deep="#3a78b8", soft="#d3e4f5",
+            tiles=["#5b9bd5"] + _LILAC["tiles"][1:])
+# 타일 색은 틀에 라일락 값으로 박혀 있어 첫 칸만 바꿔 끼운다
+SKY_CSS = (LILAC_TEMPLATE.format(**_SKY).replace(_LILAC["tiles"][0], _SKY["tiles"][0])
+           .replace("</style>", ".bg-heroc .art svg g {{ fill:{p} !important; }}\n</style>".format(p=_SKY["primary"])))
 
 
 # 발표자료(발길_발표자료_최종.pdf)와 같은 색 — 짙은 남색 · 하늘색 · 옅은 하늘색. 모양(둥근 모서리 · 옅은 그림자 ·
