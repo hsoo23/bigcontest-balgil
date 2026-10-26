@@ -191,6 +191,16 @@ SHORT = {"빨강": "필수형 끊김", "주황": "대면형 끊김", "노랑": "
 SEXES, AGES = ["남", "여"], ["60대", "70대", "80대"]
 
 
+# agent.py 날씨 꼬리표(「큰비 2일(10/10·10/11)」)를 담당자가 읽는 말로. 기준은 scripts/explore_weather.py
+WEATHER_WORDS = {"큰비": "비가 많이 온 날", "폭염": "폭염", "한파": "한파", "대설": "눈이 많이 온 날"}
+
+
+def weather_words(tag: str) -> str:
+    """「큰비 2일(10/10·10/11) · 한파 1일(…)」 → 「비가 많이 온 날 2일 · 한파 1일」. 날짜는 뺀다."""
+    tag = re.sub(r"\([^)]*\)", "", tag)
+    return re.sub(r"\S+(?= \d+일)", lambda m: WEATHER_WORDS.get(m.group(), m.group()), tag).strip()
+
+
 def briefing_answer(g: pd.DataFrame, n_people: int) -> tuple[str, str, list | None]:
     """이번 주 답 — (한 줄, 덧말, 오늘 할 일). agent.py 권고 순서(07_에이전트 7.5)를 할 일 세 칸으로 편다.
     첫인상에서 읽히도록 한 줄은 짧게, 근거 숫자는 아래 타일·신호판이 맡는다."""
@@ -200,11 +210,14 @@ def briefing_answer(g: pd.DataFrame, n_people: int) -> tuple[str, str, list | No
         n_y = int((g["신호"] == "노랑").sum())
         return ("<b>끊긴 집단이 없습니다</b>",
                 f"좁아진 {n_y}개 집단은 동 단위 프로그램·봉사로 나갑니다" if n_y else "다음 주에 다시 봅니다", None)
-    # 궂은 날은 「큰비 2일」만 — 날짜는 아래 자세히 표에 있다
+    # 궂은 날은 「비가 많이 온 날 2일」처럼 말로만 — 날짜는 아래 자세히 표에 있다. 같은 날씨인 도시는 한데 묶는다
     wx = {c: d["궂은날"].replace("", np.nan).dropna() for c, d in broken.groupby("도시")}
-    no_dates = lambda t: re.sub(r"\(.*?\)", "", t)  # noqa: E731
-    wx_txt = " · ".join(f"{c} {no_dates(v.iloc[0])}" for c, v in wx.items() if len(v))
-    wx_sub = f" · 이 주 궂은 날: {ui.esc(wx_txt)}" if wx_txt else ""
+    by_wx: dict[str, list[str]] = {}
+    for c, v in wx.items():
+        if len(v):
+            by_wx.setdefault(weather_words(v.iloc[0]), []).append(c)
+    wx_txt = " · ".join(f"{'·'.join(cs)}{' 모두' if len(cs) > 1 else ''} {w}" for w, cs in by_wx.items())
+    wx_sub = f"<br>날씨 탓일 수도 있습니다 — {ui.esc(wx_txt)}" if wx_txt else ""
     if not same.empty:
         return (f"고령 <b>{len(same)}개 집단</b>이 도시마다 함께 끊겼습니다",
                 f"한 사람씩 전화하기 전에 <b>공통 사건</b>부터 확인하세요{wx_sub}",
@@ -260,7 +273,7 @@ def signal_table(g: pd.DataFrame):
         broken = r["신호"] in ("빨강", "주황")
         rows.append({
             # 알림은 지우지 않고 꼬리표만 단다(B4 메모 4절). 상태 색이 아니라 글자로만 보인다
-            "날씨 가능": ui.esc(re.sub(r"\([^)]*\)", "", r["궂은날"])) if has_wx and broken and r["날씨가능"] else "—",
+            "날씨 가능": ui.esc(weather_words(r["궂은날"])) if has_wx and broken and r["날씨가능"] else "—",
             "신호": ui.badge(label, color),
             "집단": ui.esc(r["집단"]),
             "끊긴 날": f"{int(r['끊김일수'])}일" if broken else "—",
@@ -432,11 +445,11 @@ def resource_lines(g: pd.DataFrame):
     if "자원후보" not in g or not (g["자원후보"] != "").any():
         return
     kind = {"빨강": "방문 때 가져갈 복지서비스", "주황": "만남이 생기는 봉사·프로그램", "노랑": "동 단위로 나갈 봉사 일감"}
-    shorten = lambda s: s if len(s) <= 18 else s[:17] + "…"  # noqa: E731  1365 제목이 길다
     x = g[g["자원후보"] != ""].assign(_o=lambda d: d["신호"].map(SIGNAL_ORDER)).sort_values(["_o", "도시"])
     html("<div class='bg-sec' style='margin-top:4px'>이 주에 가져갈 것</div>")
     for (sig, city, res), d in x.groupby(["신호", "도시", "자원후보"], sort=False):
-        chips = "".join(f"<span class='bg-chip' title='{ui.esc(s.strip())}'>{ui.esc(shorten(s.strip()))}</span>"
+        # 이름을 자르지 않는다 — 잘린 이름은 담당자가 복사해 찾을 수 없다. 긴 이름은 칩 안에서 줄을 바꾼다
+        chips = "".join(f"<span class='bg-chip'>{ui.esc(s.strip())}</span>"
                         for s in res.split(" · "))
         html(f"<div class='bg-res'><div class='h'>{ui.badge(SHORT[sig], SIGNAL[sig][1])} <b>{ui.esc(city)}</b> "
                      f"<span>{kind.get(sig, '')}</span></div>{chips}</div>")

@@ -166,7 +166,8 @@ hr {{ border-color: {HAIRLINE} !important; }}
 .bg-res .h {{ font-size:13.5px; color:{INK}; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }}
 .bg-res .h span {{ color:{MUTE}; }}
 .bg-chip {{ display:inline-block; padding:4px 10px; border-radius:9999px; background:{CANVAS_SOFT};
-  border:1px solid {HAIRLINE}; font-size:12.5px; color:{INK_2}; margin:8px 6px 0 0; }}
+  border:1px solid {HAIRLINE}; font-size:12.5px; color:{INK_2}; margin:8px 6px 0 0;
+  max-width:100%; white-space:normal; overflow-wrap:anywhere; line-height:1.45; user-select:text; }}
 
 /* ── v2: 대시보드 틀 ───────────────────────────────────────────── */
 .block-container {{ padding-top: 28px !important; max-width: 1360px; }}
