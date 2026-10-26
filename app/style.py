@@ -183,9 +183,7 @@ hr {{ border-color: {HAIRLINE} !important; }}
 .bg-nav a:hover {{ background:{CANVAS_SOFT}; color:{INK} !important; }}
 .bg-nav a.on {{ background:{PRIMARY_SOFT_BG}; color:{PRIMARY} !important; font-weight:600; }}
 .bg-nav a svg {{ width:20px; height:20px; flex:none; }}
-.bg-side-note {{ margin-top:28px; background:{PRIMARY}; color:#fff; border-radius:16px; padding:18px 16px; font-size:12.5px; line-height:1.55; }}
-.bg-side-note b {{ display:block; font-size:14px; margin-bottom:4px; }}
-.bg-team {{ margin-top:12px; border:1px solid {HAIRLINE}; border-radius:14px; padding:10px 12px; display:flex; align-items:center; gap:10px; font-size:13px; }}
+.bg-team {{ margin-top:28px; border:1px solid {HAIRLINE}; border-radius:14px; padding:10px 12px; display:flex; align-items:center; gap:10px; font-size:13px; }}
 .bg-team i {{ width:30px; height:30px; border-radius:50%; background:{PRIMARY_SOFT_BG}; display:flex; align-items:center; justify-content:center; font-style:normal; font-weight:700; color:{PRIMARY}; }}
 .bg-team span {{ display:block; font-size:11px; color:{MUTE}; }}
 
@@ -279,9 +277,6 @@ div.st-key-card, div[class*="st-key-card"] {{ border-radius:18px !important; box
 .bg-nav a {{ color:{INK_2} !important; font-weight:600; }}
 .bg-nav a:hover {{ background:#f8efe8; color:{INK} !important; }}
 .bg-nav a.on {{ background:{PEACH_SOFT}; color:#c9553b !important; box-shadow:none; }}
-.bg-side-note {{ background:linear-gradient(150deg, #fde3d8 0%, #fdece4 100%); color:#5a3a30; border:none; }}
-.bg-side-note b {{ color:#c9553b; }}
-.bg-side-note u {{ text-decoration-color:{PEACH}; text-decoration-thickness:2px; }}
 .bg-team {{ background:{CANVAS}; border-color:{HAIRLINE}; color:{INK}; }}
 .bg-team i {{ background:{PEACH}; color:#fff; }} .bg-team span {{ color:{MUTE}; }}
 
@@ -426,8 +421,6 @@ def sidebar(active: int, items: list[tuple[str, str]]) -> str:
                   for i, (t_, ic) in enumerate(items, 1))
     return (f'<div class="bg-logo">{logo_svg(42)}<div><div class="t">발길</div><div class="s">고립 조기 발견 에이전트</div></div></div>'
             f'<div class="bg-navh">담당자 화면</div><div class="bg-nav">{nav}</div>'
-            f'<div class="bg-side-note"><b>시연용 화면</b>집단 지표는 실제 분석 결과(신한카드·SK·상가·공공데이터)이고, '
-            f'개인 단위 사례는 모두 <u>가상</u>입니다. 수치는 최종 수치표와 같습니다.</div>'
             f'<div class="bg-team"><i>또</i><div>또커톤<span>빅콘테스트 2026</span></div></div>')
 
 
@@ -480,8 +473,6 @@ DECK_CSS = ("""<style>
 .bg-nav a {{ color:#d5dfeb !important; }}
 .bg-nav a:hover {{ background:{navy2} !important; color:#fff !important; }}
 .bg-nav a.on {{ background:{sky} !important; color:{navy} !important; box-shadow:0 6px 16px rgba(108,181,234,.35) !important; }}
-.bg-side-note {{ background:{navy2} !important; color:#d5dfeb !important; border:none !important; }}
-.bg-side-note b {{ color:{sky} !important; }} .bg-side-note u {{ text-decoration-color:{sky} !important; }}
 .bg-team {{ background:{navy2} !important; border:none !important; color:#fff !important; }}
 .bg-team i {{ background:{sky} !important; color:{navy} !important; }} .bg-team span {{ color:#8ea3bd !important; }}
 
