@@ -22,6 +22,13 @@
 """
 from __future__ import annotations
 
+import sys
+
+# 한글 윈도우 콘솔은 기본이 cp949 라 「—」 같은 글자에서 print 가 죽는다.
+# 결과 파일은 이미 만들어진 뒤라 멀쩡한데 Traceback 만 보고 실패로 읽히므로, 출력만 UTF-8 로 돌린다.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 import argparse
 import hashlib
 import subprocess
