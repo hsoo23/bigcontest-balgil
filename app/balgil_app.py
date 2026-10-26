@@ -222,7 +222,7 @@ def briefing_answer(g: pd.DataFrame, n_people: int) -> tuple[str, str, list | No
     if not same.empty:
         return (f"고령 <b>{len(same)}개 집단</b>이 도시마다 함께 끊겼습니다",
                 f"한 사람씩 전화하기 전에 <b>공통 사건</b>부터 확인하세요{wx_sub}",
-                [("공통 사건 확인", "명절·궂은 날·행사라면 개인 전화는 미룹니다", True),
+                [("공통 사건 확인", "명절·궂은 날·행사면 전화는 미룹니다", True),
                  (f"아니면 {n_people}명에게 전화", "칸마다 가장 오래 끊긴 3명 (가상 명부)", False),
                  ("닿지 않으면 가게·경로당 → 방문", "가져갈 복지서비스는 아래", False)])
     if n_people == 0:
@@ -326,7 +326,7 @@ def screen_briefing():
             signal_table(g)
     with rail:
         if steps:
-            html(ui.timeline("오늘 할 일", "agent.py 권고 순서", steps))
+            html(ui.timeline("오늘 할 일", "위에서부터 차례로", steps))
         resource_lines(g)
 
 
@@ -408,10 +408,12 @@ def people_section(as_of: pd.Timestamp, g: pd.DataFrame, p: pd.DataFrame):
     sig_of = g.set_index("집단")["신호"]
     top = p.sort_values(["경과일", "집단"], ascending=[False, True]).head(5)
     rows = "".join(person_row(r, sig_of[r["집단"]]) for _, r in top.iterrows())
+    # 열 제목은 줄과 같은 격자에 둔다 — 머리 오른쪽에 몰아 두면 「먼저 물을 곳」이 날짜 열 위에 떠 보인다
+    head = ("<div class='row colh'><span></span><span>대상자 · 주소 동</span><span>먼저 물을 곳</span>"
+            "<span style='text-align:right'>접촉 뒤</span></div>")
     html(f"<div class='bg-board'><div class='hd'><div><div class='bg-sec' style='margin:0'>먼저 확인할 사람 {len(p)}명</div>"
          f"<div class='sub'>마지막 접촉이 오래된 순 · <b>가상 명부</b>(41명, 실제 인물이 아닙니다)</div></div>"
-         f"<div class='lg'><span>먼저 물을 곳</span><span style='width:52px;justify-content:flex-end'>접촉 뒤</span></div></div>"
-         f"<div class='bg-plist'>{rows}</div></div>")
+         f"</div><div class='bg-plist'>{head}{rows}</div></div>")
     with st.expander(f"{len(p)}명 전체 — 집단 · 주소 동 · 창구 · 물어볼 장소"):
         people_table(p, g)
 
