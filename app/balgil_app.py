@@ -169,6 +169,7 @@ SIGNAL = {
     "노랑": ("노랑 · 좁아짐", WARNING),
     "초록": ("초록 · 평온", CALM),
 }
+sig_dot = lambda c: f"<span class='bg-dot' style='background:{c};margin-right:5px'></span>"  # noqa: E731
 SIGNAL_ORDER = {"빨강": 0, "주황": 1, "노랑": 2, "초록": 3}
 DEMO_AS_OF = "2025-10-12"  # 시연 주 10/06~10/12 (#49 2번). 보조 장면 10/01 주황은 10/05 주
 DEMO_SEG = "춘천 여성 70대"  # 화면 ② 기본 집단 — 시연 칸(08절 8.1)
@@ -313,8 +314,9 @@ def screen_briefing():
         a0, a1, a2 = (int(sm[k]) for k in ("경보일_보정없음", "경보일_계절보정", "경보일_공통충격보정"))
         html(ui.kpis([
             ui.kpi("확인 권고 집단", f"{n}", ui.PRIMARY, "users", f"지난주 {n_prev}개", unit="/ 12"),
-            ui.kpi("필수형 끊김", f"{int(sm['빨강'])}", CRITICAL, "alert", "빨강 신호"),
-            ui.kpi("대면형 끊김", f"{int(sm['주황'])}", SERIOUS, "bell", "주황 신호"),
+            # 신호판·배지와 같은 색 점 — 타일 바탕은 발표자료 색이라 신호 색은 점으로만 보인다
+            ui.kpi("필수형 끊김", f"{int(sm['빨강'])}", CRITICAL, "alert", f"{sig_dot(CRITICAL)}빨강 신호"),
+            ui.kpi("대면형 끊김", f"{int(sm['주황'])}", SERIOUS, "bell", f"{sig_dot(SERIOUS)}주황 신호"),
             ui.kpi("보정 뒤 경보일", f"{a2}", "#1baf7a", "shield", f"보정 없이 {a0}" + (" · 늘어남" if a2 > a0 else ""))]))
         # 사람을 먼저 — 담당자가 이번 주 할 일(전화)이 맨 위, 그 근거인 집단 신호는 아래로
         people_section(as_of, g, p)
