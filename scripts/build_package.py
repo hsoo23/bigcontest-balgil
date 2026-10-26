@@ -12,7 +12,7 @@
   발길_화면캡처.zip          reports/screens/*.png — **capture_screens.py 를 먼저 돌려야 한다**
   발길_E5…·E6….html         PDF 로 뜨기 위한 HTML (build_report.to_html 과 같은 서식)
 
-**여기서 못 만드는 것**도 같이 찍는다 — 사람이 해야 하는 자리를 숨기지 않는다.
+**여기서 만들지 않는 것**도 같이 찍는다 — 빠진 자리를 숨기지 않는다.
   발표자료 PDF     구글 슬라이드에서 내려받는다(원고는 build_slides_pptx.py 로 만든 PPTX)
   보고서·설계자료 PDF  scripts/build_pdf.py 가 크롬 헤드리스로 뜬다
   상가 강원 CSV zip   원본이 현수 PC 에만 있다
@@ -184,7 +184,7 @@ def main() -> None:
                 if "화면캡처" in name else "원본이 없습니다"
             print(f"  {name:40s} {why}")
 
-    print("\n■ 여기서 만들 수 없는 것 — 사람이 해야 합니다")
+    print("\n■ 이 스크립트가 만들지 않는 것 — 다른 스크립트나 사람이 합니다")
     done = {name for name, _, _ in made}
     for name, how in ELSEWHERE:
         if name in done:
