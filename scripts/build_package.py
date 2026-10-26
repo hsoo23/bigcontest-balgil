@@ -23,6 +23,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import subprocess
 import zipfile
 from pathlib import Path
@@ -33,9 +34,11 @@ ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "reports" / "package"
 MAIL_LIMIT = 25 * 1024 * 1024          # 「보내기 전 확인」 6번
 GANGWON_ZIP = 13.3 * 1024 * 1024       # 상가 강원 CSV zip — #112 에서 첨부로 정했고 수경이 잰 값
-# #121 에서 논의 중인 두 길. 「링크」 안으로 가면 아래 둘은 메일 본문 링크로 나가므로
+# #121 에서 정한 두 길. 「링크」 안으로 가면 아래 둘은 메일 본문 링크로 나가므로
 # 첨부 합계에서 빠진다. 어느 쪽으로 정해도 그날 다시 고치지 않도록 **두 값을 같이 찍는다**
 LINKED = ("발길_화면캡처.zip", "발길_외부데이터원본_상가강원.zip")
+# zip 항목의 시각을 이 값으로 고정한다 — 묶는 PC 가 달라도 해시가 같아야 메일에 적을 수 있다
+ZIP_EPOCH = (2026, 10, 26, 0, 0, 0)
 # 코드 zip 에서 뺄 것. 제출본·캡처는 따로 첨부로 나가고(두 번 보내지 않는다),
 # 아래 셋은 심사위원에게 보낼 글이 아니다(옛 문서 · 노션 파생물 · 깃허브 설정)
 CODE_SKIP = ("reports/screens/", "docs/archive/", "docs/notion/", ".github/")
@@ -59,14 +62,32 @@ def tracked() -> list[Path]:
 
 
 def zip_files(name: str, files: list[Path], base: Path = ROOT) -> Path | None:
+    """파일을 묶는다. **누가 묶어도 바이트가 같게** 파일 시각을 고정한다.
+
+    zip 은 항목마다 원본의 수정 시각을 담으므로, 같은 CSV 를 묶어도 PC 마다 해시가 달라진다
+    (수경 PC `1efe6fe1…` · 현수 Mac `49283bb9…`, 크기는 13,346,057바이트로 같음 — #123 현수 리뷰).
+    큰 파일을 드라이브 링크로 내기로 했고(#121) 메일 본문에 **zip 의 SHA-256 을 적어** 마감 뒤에
+    바뀌지 않았음을 보이기로 했으니, 묶는 사람이 바뀌면 해시가 달라지는 것은 곤란하다.
+    """
     files = [f for f in files if f.is_file()]
     if not files:
         return None
     p = OUT / name
     with zipfile.ZipFile(p, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
         for f in sorted(files):
-            z.write(f, f.relative_to(base).as_posix())
+            info = zipfile.ZipInfo(f.relative_to(base).as_posix(), date_time=ZIP_EPOCH)
+            info.compress_type = zipfile.ZIP_DEFLATED
+            info.external_attr = 0o644 << 16          # 권한도 고정한다 — 윈도우와 맥이 다르다
+            z.writestr(info, f.read_bytes(), compresslevel=9)
     return p
+
+
+def sha256(p: Path) -> str:
+    h = hashlib.sha256()
+    with p.open("rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
 
 def mb(n: int) -> str:
@@ -140,6 +161,15 @@ def main() -> None:
     print("   발표자료 PDF 가 그림 15장 + 캡처를 품어 가장 큽니다. 뜨는 대로 #121 에 크기를 적습니다")
     print("   한 통으로 안 되면 「1/2 · 2/2」로 나눕니다(제출요건 6-2 확인 6번)")
 
+    # 링크로 나가는 zip 은 메일 본문 표에 크기와 해시를 적는다(제출요건 6-2 3번).
+    # 묶을 때 시각을 고정했으므로 누가 묶어도 같은 값이 나온다 — 그대로 옮겨 적으면 된다.
+    linked_made = [(name, p) for name, p, _ in made if name in LINKED]
+    if linked_made:
+        print("\n■ 드라이브로 가는 zip — 메일 6-2 3번 표에 그대로 옮깁니다")
+        for name, p in linked_made:
+            print(f"  {name:40s} {mb(p.stat().st_size):>10s}  {sha256(p)}")
+        print("   시각을 고정해 묶으므로 다른 PC 에서 다시 묶어도 같은 해시가 나옵니다")
+
     if missing:
         print("\n■ 아직 못 만든 것")
         for name in missing:
@@ -148,7 +178,10 @@ def main() -> None:
             print(f"  {name:40s} {why}")
 
     print("\n■ 여기서 만들 수 없는 것 — 사람이 해야 합니다")
+    done = {name for name, _, _ in made}
     for name, how in ELSEWHERE:
+        if name in done:
+            continue      # 이 PC 에서 묶였으면 「원본이 없습니다」를 또 찍지 않는다(#123 현수 리뷰 1)
         print(f"  {name:40s} {how}")
 
 
