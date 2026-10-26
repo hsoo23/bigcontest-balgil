@@ -254,6 +254,7 @@ div.st-key-card, div[class*="st-key-card"] {{ border-radius:18px !important; box
 .bg-tile .d {{ font-size:11px !important; margin-top:1px !important; }}
 .bg-plist .row {{ display:grid; grid-template-columns: 52px minmax(0, 1fr) minmax(0, 1.2fr) 56px; align-items:center; gap:14px;
   padding:10px 0; border-top:1px solid {HAIRLINE}; }}
+.bg-plist .colh {{ font-size:12px; color:{MUTE}; padding:0 0 8px !important; }}
 .bg-plist .row:first-child {{ border-top:none; padding-top:2px; }}
 .bg-plist .av {{ width:46px; height:30px; border-radius:10px; font-size:12px; font-weight:800; display:flex; align-items:center; justify-content:center; }}
 .bg-plist .who b {{ display:block; font-size:13.5px; color:{INK}; }}
