@@ -589,12 +589,14 @@ def side(z: float) -> str:
 def detail_answer(seg: str, wk: pd.Timestamp, row: pd.Series, val, sv: pd.DataFrame) -> str:
     """화면 ② 답 — 확률 한 줄 + 그 확률을 가장 크게 움직인 둘. 수치는 전부 슬롯(E6 5.2)."""
     top = sv.head(2)
-    why = " · ".join(f"{ui.esc(r.변수)} <b>{r.기여:+.3f}</b> ({'높임' if r.기여 >= 0 else '낮춤'})" for r in top.itertuples())
+    # 항목 하나(「이번 주 좁아짐 +0.096 (높임)」)는 줄을 바꾸지 않는다 — 「(높 / 임)」처럼 끊기지 않게
+    why = " · ".join(f"<span style='white-space:nowrap'>{ui.esc(r.변수)} <b>{r.기여:+.3f}</b> "
+                     f"({'높임' if r.기여 >= 0 else '낮춤'})</span>" for r in top.itertuples())
     return ui.answer(
         f"{seg} · {wk:%m/%d} 주",
         f"다음 주 좁아짐 상위 7칸에 들어갈 확률 <b>{row['확률'] * 100:.0f}%</b>. "
         f"이번 주 좁아짐 점수 <b>{val('narrow'):+.2f}</b>, 3주 평균 <b>{val('m3'):+.2f}</b>입니다.",
-        f"체류 비중 {val('stay_z'):+.2f} · 발길 수 {val('breadth_z'):+.2f} (같은 성·나이 기준 z) — "
+        f"체류 비중 {val('stay_z'):+.2f} · 발길 수 {val('breadth_z'):+.2f} (같은 성·나이 기준 z)<br>"
         f"확률을 가장 크게 움직인 것: {why}")
 
 

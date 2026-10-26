@@ -212,7 +212,7 @@ div.st-key-card, div[class*="st-key-card"] {{ border-radius:18px !important; box
 
 .bg-heroc {{ background:{CANVAS}; border-radius:20px; padding:26px 28px; box-shadow: rgba(31,35,64,0.06) 0 4px 18px;
   display:flex; align-items:center; gap:24px; margin-bottom:18px; }}
-.bg-heroc .body {{ flex:1; min-width:0; }}
+.bg-heroc .body {{ flex:1; min-width:0; word-break:keep-all; overflow-wrap:break-word; }}  /* 답 카드는 띄어쓰기에서만 줄을 바꾼다 */
 .bg-heroc .k {{ font-size:12.5px; color:{MUTE}; margin-bottom:6px; }}
 .bg-heroc .t {{ font-size:22px; font-weight:400; line-height:1.4; letter-spacing:-0.5px; color:{INK}; }}
 .bg-heroc .t b {{ font-weight:800; color:{PRIMARY_DEEP}; }}
