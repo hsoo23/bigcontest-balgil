@@ -159,6 +159,10 @@ def main() -> None:
     slides = parse(SRC.read_text(encoding="utf-8"))
     prs = build(slides)
     OUT.parent.mkdir(parents=True, exist_ok=True)
+    # 문서 속성은 팀명으로 — 비워 두면 라이브러리 기본값(만든 사람 이름 · 「generated using python-pptx」)이 남는다
+    cp = prs.core_properties
+    cp.author = cp.last_modified_by = "또커톤"
+    cp.title, cp.comments = "발길 — 발표자료", ""
     prs.save(OUT)
     no_fig = [s["eyebrow"] for s in slides if not s["fig"]]
     print(f"저장: {OUT.relative_to(ROOT)}  —  {len(slides)}장 · "
