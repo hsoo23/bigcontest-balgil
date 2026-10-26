@@ -14,7 +14,7 @@
 
 **여기서 못 만드는 것**도 같이 찍는다 — 사람이 해야 하는 자리를 숨기지 않는다.
   발표자료 PDF     구글 슬라이드에서 내려받는다(원고는 build_slides_pptx.py 로 만든 PPTX)
-  보고서·설계자료 PDF  브라우저에서 HTML 을 열어 「인쇄 → PDF로 저장」
+  보고서·설계자료 PDF  scripts/build_pdf.py 가 크롬 헤드리스로 뜬다
   상가 강원 CSV zip   원본이 현수 PC 에만 있다
   큰 외부 원본 2종    서울 CSV · SGIS shp 세트 437.1MB 라 메일로 못 보낸다(#40 ③, 메일 3번 문단)
 
@@ -54,11 +54,11 @@ DESIGN = [("발길_E5_가상데이터생성설계자료", ROOT / "docs" / "draft
           ("발길_E6_LLM활용설계자료", ROOT / "docs" / "draft" / "E6_LLM활용설계자료.md")]
 
 ELSEWHERE = [("발길_발표자료.pdf", "구글 슬라이드에서 내려받기 — 원고는 reports/발길_발표자료.pptx"),
-             ("발길_분석보고서.pdf", "reports/발길_분석보고서.html 을 브라우저에서 [인쇄 → PDF로 저장]"),
-             ("발길_E5_가상데이터생성설계자료.pdf", "아래에서 만든 HTML 을 같은 방법으로"),
-             ("발길_E6_LLM활용설계자료.pdf", "아래에서 만든 HTML 을 같은 방법으로"),
+             ("발길_분석보고서.pdf", "python scripts/build_pdf.py — 크롬 헤드리스로 뜹니다(6.18MB · 98쪽)"),
+             ("발길_E5_가상데이터생성설계자료.pdf", "python scripts/build_pdf.py (0.37MB · 9쪽)"),
+             ("발길_E6_LLM활용설계자료.pdf", "python scripts/build_pdf.py (0.24MB · 5쪽)"),
              ("발길_외부데이터원본_상가강원.zip", "이 PC 에 원본이 없습니다. data/external/sbiz_store/ 에 강원 CSV 가 있는 PC(수경·현수)에서 돌리면 여기서 묶입니다"),
-             ("(메일 3번) 큰 외부 원본 2종", "서울 CSV · SGIS shp 세트 437.1MB — 첨부하지 않고 본문에 적습니다 (#40 ③)")]
+             ("(메일 3번) 큰 외부 원본 2종", "서울 CSV · SGIS shp 세트 437.1MB — 드라이브 폴더에 올리고 메일에는 링크와 SHA-256 만 (#124)")]
 
 
 def tracked() -> list[Path]:
