@@ -199,7 +199,10 @@ def main() -> None:
             warn.append(f"{src.name}: 남은 링크 {url}")
         parts.append(body)
 
-    items = [f"- {t}" for t in toc]       # 절 제목에 이미 번호가 있다
+    # 절 제목에 이미 번호가 있다. 「- 1. 문제」는 마크다운이 **번호 목록 안의 목록**으로 읽어
+    # 들여쓰기가 부록 줄과 어긋나므로, 번호 뒤 점을 이스케이프해 글자로 둔다
+    dot = lambda s: re.sub(r"^(\d+)[.]", lambda m: m.group(1) + chr(92) + ".", s)
+    items = ["- " + dot(t) for t in toc]
     doc = COVER + "\n## 목차\n\n" + "\n".join(items) + "\n\n---\n\n"
     doc += "\n\n---\n\n".join(parts[1:]) + "\n"
 
