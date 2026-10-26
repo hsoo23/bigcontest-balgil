@@ -1,10 +1,11 @@
 [theme]
 # 화면 캡처가 발표자료에 들어가므로 밝은 테마로 고정한다(차트 색은 밝은 면 기준으로 검증).
+# 위젯(슬라이더 · 라디오 · 스위치) 강조색은 발표자료의 하늘색 — 기본 테마(deck, app/style.py DECK_CSS)와 같다
 base = "light"
-backgroundColor = "#f6f9fc"
+backgroundColor = "#f4f7fb"
 secondaryBackgroundColor = "#fcfcfb"
-textColor = "#0d253d"
-primaryColor = "#533afd"
+textColor = "#0a2647"
+primaryColor = "#3d8fd1"
 font = "sans serif"
 
 [browser]

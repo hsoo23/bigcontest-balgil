@@ -3,9 +3,9 @@
 11장은 「화면 넷」이 주장인데 캡처가 넉 장으로 따로 있어, 슬라이드에 넣을 그림이 없었다.
 손으로 네 장을 올리면 장마다 크기·여백이 달라지므로 여기서 한 번에 맞춘다.
 
-**화면 ①은 세로로 아주 길다**(2880 × 6588). 통째로 줄이면 글자가 뭉개지므로 **위쪽만 자른다** —
-카드 넷과 12집단 신호표가 거기 있고, 그 아래 「먼저 확인할 사람」 표는 8절 그림 8-1에서 통째로 본다.
-나머지 셋은 비율이 1:1 언저리라 그대로 줄인다.
+예전 화면 ①은 세로로 아주 길어(2880 × 6588) 위쪽만 잘랐다. 대시보드 틀(#126)로 바꾼 뒤에는
+넷 모두 1:1 언저리(화면 ① 2880 × 3320)라 **자르지 않고 그대로 줄인다.** 세로로 긴 화면이 다시 생기면
+PANEL 셋째 칸에 비율(가로 대비 세로)을 넣으면 위쪽만 잘린다.
 
 캡처는 현수가 찍어 커밋한 것을 읽기만 한다(`capture_screens.py`, #118). 이 스크립트는 자르고
 붙이기만 하므로 돌릴 때마다 같은 그림이 나온다 — 글자는 번호와 이름뿐이다.
@@ -31,7 +31,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "reports" / "screens"
 OUT = ROOT / "reports" / "figures" / "fig_screens_grid.png"
 
-PANEL = [("screen1.png", "① 주간 브리핑 — 이번 주 누구를 먼저 확인할까", 1.15),
+PANEL = [("screen1.png", "① 주간 브리핑 — 이번 주 누구를 먼저 확인할까", None),
          ("screen2.png", "② 발길 상세 — 왜 이 집단인가", None),
          ("screen3.png", "③ 터전 지도 — 어느 동에 닿을 곳이 없나", None),
          ("screen4.png", "④ 보정 전·후 — 헛알림을 얼마나 지웠나", None)]
@@ -81,7 +81,7 @@ def main() -> None:
         d.rectangle([x, top, x + CELL_W - 1, top + im.height - 1], outline=EDGE, width=2)
 
     d.text((PAD, H - PAD + 2), "캡처: python scripts/capture_screens.py (1440px × 2배). "
-                               "화면 ①은 위쪽(카드 넷 · 12집단 신호표)만 잘랐습니다 — 전체는 보고서 그림 8-1.",
+                               "네 화면 모두 자르지 않고 줄였습니다 — 크게 보려면 보고서 그림 8-1~8-4.",
            font=f_sub, fill=MUTED)
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
