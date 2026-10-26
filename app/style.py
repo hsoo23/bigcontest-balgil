@@ -275,7 +275,14 @@ div.st-key-card, div[class*="st-key-card"] {{ border-radius:18px !important; box
 .bg-res .h {{ font-size:13px !important; }}
 .bg-chip {{ font-size:12px !important; padding:4px 10px !important; margin:8px 6px 0 0 !important; }}
 [data-testid="stExpander"] summary p {{ font-size:13.5px !important; color:{INK_2} !important; }}
-.st-key-card_cont, .st-key-card_ground {{ min-height:369px; }}
+/* 화면 ② 아래 줄 — 연속성 차트와 터전 표 카드를 같은 높이로(열 안 블록을 열 높이만큼 늘린다) */
+div[data-testid="stHorizontalBlock"]:has(.st-key-card_ground) > div[data-testid="stColumn"] > div[data-testid="stVerticalBlock"],
+div[data-testid="stHorizontalBlock"]:has(.st-key-card_ground) [data-testid="stLayoutWrapper"]:has(> .st-key-card_cont, > .st-key-card_ground) {{ flex:1 1 auto; height:100%; }}
+.st-key-card_cont, .st-key-card_ground {{ flex:1 1 auto; height:100%; box-sizing:border-box; }}
+/* 차트 카드가 아닌 카드의 제목 — Altair title(14px · 600 · 위 8px)과 같은 자리 */
+.bg-ctitle {{ padding:0 0 0 4px; margin:-6px 0 12px; line-height:1.3; }}
+.bg-ctitle b {{ display:block; font-size:14px; font-weight:600; color:{INK}; letter-spacing:0; }}
+.bg-ctitle span {{ display:block; font-size:12px; color:{MUTE}; margin-top:1px; }}
 
 /* ── v4: 크림 바탕 · 라벤더 메뉴 · 파스텔 카드 ─────────────────────── */
 .stApp {{ background:{CANVAS_SOFT} !important; }}

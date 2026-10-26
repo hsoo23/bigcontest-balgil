@@ -78,6 +78,8 @@ def chart_theme():
             "axis": {"labelColor": ui.MUTE, "titleColor": ui.MUTE, "gridColor": ui.HAIRLINE, "domain": False,
                      "tickColor": ui.HAIRLINE, "labelFontSize": 11, "titleFontSize": 11, "titleFontWeight": 400,
                      "labelPadding": 6},
+            # y축 글자 폭을 고정 — 「−0.5」와 「−0.2」처럼 눈금 글자가 달라도 그림의 왼쪽 끝이 카드마다 같은 자리에
+            "axisY": {"minExtent": 40},
             "legend": {"labelColor": ui.INK_2, "labelFontSize": 12, "symbolSize": 80, "titleFontSize": 11},
             "title": {"color": ui.INK, "fontSize": 14, "fontWeight": 600, "anchor": "start", "offset": 12,
                       "subtitleColor": ui.MUTE, "subtitleFontSize": 12, "subtitleFontWeight": 400},
@@ -547,17 +549,17 @@ def screen_detail():
     a, b = st.columns(2)
     with a, card("cont"):
         st.altair_chart(trend(g, {"narrow": "이번 주", "m3": "3주 평균"}, "연속성 — 늘 가던 대로 가는가",
-                              "좁아짐 점수 (높을수록 좁아짐)", wk, height=290), width="stretch")  # 옆 터전 카드와 높이를 맞춘다
+                              "좁아짐 점수 (높을수록 좁아짐)", wk, height=322), width="stretch")  # 옆 터전 카드 높이(CSS로 같게)를 채운다
     city = seg.split()[0]
     weak = m[m["도시"] == city].sort_values("터전순위_통신").head(5)
     with b, card("ground"):
-        html(f"<div class='bg-sec'>터전 — 닿을 곳이 있는가 <span style='color:{ui.MUTE};font-weight:400'>"
-             f"· {city}, 동 단위</span></div>")
+        # 제목은 옆 차트 제목(Altair title)과 같은 글꼴·자리 — 카드 넷의 제목 줄이 나란히 보이게
+        html(f"<div class='bg-ctitle'><b>터전 — 닿을 곳이 있는가</b><span>{city}, 동 단위 · 터전이 약한 순 5개 동</span></div>")
         html(ui.table([("동", ""), ("터전 순위", "n"), ("체류형 점포 /천명", "n"), ("경로당·마을회관", "n")],
                       [{"동": ui.esc(r.ADM_NM), "터전 순위": f"{r.터전순위_통신}",
                         "체류형 점포 /천명": f"{r.체류형점포_천명당:.1f}", "경로당·마을회관": f"{int(r.경로당수)}"}
                        for r in weak.itertuples()]))
-        html(f"<div style='font-size:12px;color:{ui.MUTE};margin-top:8px'>터전이 약한 순 5개 동 · 이 표만 동 단위입니다</div>")
+        html(f"<div style='font-size:12px;color:{ui.MUTE};margin-top:8px'>이 표만 동 단위입니다 — 위 세 그림은 집단 단위</div>")
 
     span = float(sv["기여"].abs().max()) * 1.35
     lo, hi = (-span if (sv["기여"] < 0).any() else -span * 0.15), (span if (sv["기여"] > 0).any() else span * 0.15)
