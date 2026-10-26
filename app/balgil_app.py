@@ -325,6 +325,8 @@ def screen_briefing():
             "신호 — agent.py 판정입니다. 지난 7일 발길을 계절·같은 도시 30·40대 공통 충격으로 보정했습니다. "
             "칸의 숫자는 7일 중 가장 크게 준 날(빨강은 필수, 주황은 대면 발길)입니다.",
             "날씨 가능 — 끊긴 기간에 궂은 날이 있었다는 꼬리표일 뿐, 알림을 지우지 않습니다.",
+            "창구 — 그 동의 상대방 업종 가게가 경로당·마을회관의 3배가 안 되면 경로당·마을회관을 먼저 묻습니다(3배는 #49에서 정한 판단값). "
+            "표의 「가게 ↔ 경로당」은 그 비교에 쓴 공개 자료 개수이고, 전화할 곳의 수가 아닙니다 — 실제로 묻는 곳은 「물어볼 장소」 넉 줄까지입니다.",
             "가져갈 것 — 복지로·1365에서 고른 집단 단위 후보입니다. 실제 연결은 방문한 담당자가 판단합니다."])
 
 
@@ -347,6 +349,40 @@ def _place(r: pd.Series) -> str:
     if r.get("후보장소"):
         return f"<span style='color:{ui.MUTE}'>후보</span> {ui.esc(_short_places(r['후보장소'], r['행정동']))}"
     return "—"
+
+
+# agent.py `_window_text` 가 만든 글 — 두 꼴이다.
+#   가게 먼저 — 한식 87곳 · 약국 13곳 · 중식 10곳 (경로당·마을회관 9곳)
+#   경로당·마을회관 먼저 — 경로당·마을회관 11곳 (가게: 한식 4곳)
+# 화면에는 **창구를 가른 비교**를 보인다. 업종별 수만 늘어놓으면 「한식 271곳에 전화하라는 말인가」로
+# 읽히는데, 실제로 묻는 곳은 오른쪽 열의 최대 4곳이고 이 수는 「가게 쪽인가 경로당 쪽인가」의 근거다.
+WINDOW_SHOP = re.compile(r"^가게 먼저 — (.*) \((경로당·마을회관 [\d,]+곳|경로당 수 없음[^)]*)\)$")
+WINDOW_CENTER = re.compile(r"^경로당·마을회관 먼저 — (경로당·마을회관 [\d,]+곳) \(가게: (.*)\)$")
+
+
+def _re_first_int(s: str) -> int | None:
+    m = re.search(r"([\d,]+)곳", s)
+    return int(m.group(1).replace(",", "")) if m else None
+
+
+def _window_cell(text: str) -> str:
+    """창구 판단 칸 — 「가게 110곳 ↔ 경로당·마을회관 9곳」과 업종 내역. 꼴이 다르면 원문을 그대로 둔다."""
+    m, center_first = WINDOW_SHOP.match(text), False
+    if not m:
+        m, center_first = WINDOW_CENTER.match(text), True
+    if not m:
+        return ui.esc(text)
+    shops_txt, centers_txt = (m.group(2), m.group(1)) if center_first else (m.group(1), m.group(2))
+    n = [int(x.replace(",", "")) for x in re.findall(r"([\d,]+)곳", shops_txt)]
+    total = f"가게 {sum(n):,}곳" if n else shops_txt
+    detail = re.sub(r"\s*([\d,]+)곳", lambda m: " " + m.group(1), shops_txt) if n else ""
+    win = "경로당·마을회관" if center_first else "가게"
+    mark = lambda s, on: f"<b>{ui.esc(s)}</b>" if on else ui.esc(s)
+    # 3배 규칙이 보이게 — 「경로당 9곳」만으로는 왜 가게 쪽인지 알 수 없다(SHOP_PER_CENTER = 3)
+    cn = _re_first_int(centers_txt)
+    right = f"{centers_txt} × 3 = {cn * 3:,}곳" if cn is not None else centers_txt
+    out = f"{mark(total, win == '가게')} ↔ {mark(right, win != '가게')}"
+    return out + (f"<div style='color:{ui.MUTE};font-size:.86em'>{ui.esc(detail)}</div>" if detail else "")
 
 
 def person_row(r: pd.Series, sig: str) -> str:
@@ -397,11 +433,11 @@ def people_table(p: pd.DataFrame, g: pd.DataFrame):
             "마지막 접촉": f"<span style='white-space:nowrap'>{int(r['경과일'])}일 전</span>",
             "주소 동 · 터전 약한 순": f"{ui.esc(r['행정동'])} · {int(r['터전순위'])}/{N_DONG.get(city, '')}",
             "먼저 물을 창구": ui.esc(r["창구"]),
-            "물어볼 곳 (후보 수)": ui.esc(re.sub(r"^(가게|경로당·마을회관) 먼저 — ", "", r["물어볼곳"])),
+            "창구 판단 — 가게 ↔ 경로당": _window_cell(r["물어볼곳"]),
             "물어볼 장소 (가상 가게)": _place(r) if has_place else "",
         })
     cols = [("신호", ""), ("집단 (칸 인원)", ""), ("대상자", ""), ("마지막 접촉", "n"),
-            ("주소 동 · 터전 약한 순", ""), ("먼저 물을 창구", ""), ("물어볼 곳 (후보 수)", "m")]
+            ("주소 동 · 터전 약한 순", ""), ("먼저 물을 창구", ""), ("창구 판단 — 가게 ↔ 경로당", "m")]
     html(ui.table(cols + ([("물어볼 장소 (가상 가게)", "m")] if has_place else []), rows))
 
 
