@@ -120,6 +120,10 @@ def main() -> None:
     gw = sorted((ROOT / "data" / "external" / "sbiz_store").glob("*강원*.csv"))
     shots = sorted((ROOT / "reports" / "screens").glob("*.png")) if (ROOT / "reports" / "screens").exists() else []
 
+    # 외부 원본 zip 하나만 열어도 무엇을 썼는지 보이게 — 10종 목록(출처·라이선스·수집일·SHA-256)을 같이 넣는다.
+    # 폴더마다 meta.json 이 있지만 한눈에 보는 표는 이 파일뿐이다(10/26 현수 의견)
+    ext = ext + [ROOT / "docs" / "external_data.md"]
+
     made, missing = [], []
     for name, group in [("발길_재현코드.zip", code), ("발길_외부데이터원본.zip", ext),
                         ("발길_가상데이터.zip", syn), ("발길_화면캡처.zip", shots),
