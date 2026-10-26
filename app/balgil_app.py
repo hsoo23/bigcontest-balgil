@@ -290,14 +290,39 @@ def signal_table(g: pd.DataFrame):
     html(ui.table(cols + [("평소 닿던 업종", "m"), ("다음 행동", "m")], rows, dim_key="_calm"))
 
 
+# 주 고르기 — 끌어서 맞추는 막대 대신 목록에서 바로 고르고, ◀ ▶로 한 주씩 넘긴다(10/26 현수 의견).
+# 공휴일이 든 주에는 꼬리표를 단다 — 담당자가 「그 주」를 이름으로 찾는다
+WEEK_TAGS = {"2025-08-11": "광복절", "2025-09-29": "추석 연휴", "2025-10-06": "추석 연휴",
+             "2025-12-22": "성탄절"}
+
+
+def week_label(monday: pd.Timestamp) -> str:
+    tag = WEEK_TAGS.get(f"{monday:%Y-%m-%d}")
+    return f"{monday:%m/%d}~{monday + pd.Timedelta(days=6):%m/%d}" + (f" · {tag}" if tag else "")
+
+
+def week_picker(where, label: str, options: list, default, fmt, key: str):
+    """목록 + ◀ ▶. 값은 session_state[key] 하나에 두고, 버튼은 그 값을 한 칸 옮긴다."""
+    if st.session_state.get(key) not in options:
+        st.session_state[key] = default
+    sel, prev, nxt = where.columns([6, 1, 1], vertical_alignment="bottom", gap="small")
+    i = options.index(st.session_state[key])
+    step = lambda d: st.session_state.__setitem__(key, options[i + d])  # noqa: E731
+    prev.button("◀", key=f"{key}_prev", help="지난주", disabled=i == 0, on_click=step, args=(-1,),
+                use_container_width=True)
+    nxt.button("▶", key=f"{key}_next", help="다음 주", disabled=i == len(options) - 1, on_click=step, args=(1,),
+               use_container_width=True)
+    return sel.selectbox(label, options, key=key, format_func=fmt)
+
+
 def screen_briefing():
     summ, groups = load_agent()
     days = list(summ["기준일"])
     top, ctl = st.columns([3, 2], vertical_alignment="bottom")
     top.markdown(ui.topbar("주간 브리핑", "이번 주 누구를 먼저 확인할까 — 60대 이상 12개 집단"), unsafe_allow_html=True)
-    as_of = ctl.select_slider("주 (월~일)", options=days, value=pd.Timestamp(DEMO_AS_OF) if
-                              pd.Timestamp(DEMO_AS_OF) in days else days[-1],
-                              format_func=lambda d: f"{d - pd.Timedelta(days=6):%m/%d}~{d:%m/%d}")
+    demo = pd.Timestamp(DEMO_AS_OF)
+    as_of = week_picker(ctl, "주 (월~일)", days, demo if demo in days else days[-1],
+                        lambda d: week_label(d - pd.Timedelta(days=6)), "wk_brief")
     sm = summ[summ["기준일"] == as_of].iloc[0]
     g = groups[groups["기준일"] == as_of].copy()
     pp = load_people()
@@ -484,10 +509,10 @@ def screen_detail():
     c1, c2 = st.columns([1, 2])
     # 기본값은 시연 장면(08절 8.1): 춘천 여성 70대, DEMO_AS_OF가 끝나는 주
     seg = c1.selectbox("집단 (시군구 × 성 × 연령)", segs, index=segs.index(DEMO_SEG) if DEMO_SEG in segs else 0)
-    weeks = sorted(s["w"].unique())
+    weeks = sorted(int(x) for x in s["w"].unique())
     demo_w = (pd.Timestamp(DEMO_AS_OF) - pd.Timedelta(days=6) - WEEK0).days // 7
-    w = c2.select_slider("주", options=weeks, value=demo_w if demo_w in weeks else weeks[-1],
-                         format_func=lambda i: f"{(WEEK0 + pd.Timedelta(days=7 * int(i))):%m/%d}")
+    w = week_picker(c2, "주 (월~일)", weeks, demo_w if demo_w in weeks else weeks[-1],
+                    lambda i: week_label(WEEK0 + pd.Timedelta(days=7 * int(i))), "wk_detail")
     wk = WEEK0 + pd.Timedelta(days=7 * int(w))
     g = p[p["seg"] == seg].sort_values("w")
     row = s[(s["seg"] == seg) & (s["w"] == w)].iloc[0]
