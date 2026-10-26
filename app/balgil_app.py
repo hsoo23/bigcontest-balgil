@@ -272,22 +272,22 @@ def signal_table(g: pd.DataFrame):
     for _, r in g.sort_values(["_o", "집단"]).iterrows():
         label, color = SIGNAL[r["신호"]]
         broken = r["신호"] in ("빨강", "주황")
+        # 알림은 지우지 않고 꼬리표만 단다(B4 메모 4절). 상태 색이 아니라 글자로만 보인다
+        wx = (f"<span class='sm'>{_items(weather_words(r['궂은날']), stack=True)}</span>"
+              if has_wx and broken and r["날씨가능"] else "")
         rows.append({
-            # 알림은 지우지 않고 꼬리표만 단다(B4 메모 4절). 상태 색이 아니라 글자로만 보인다
-            "날씨 가능": ui.esc(weather_words(r["궂은날"])) if has_wx and broken and r["날씨가능"] else "—",
-            "신호": ui.badge(label, color),
-            "집단": ui.esc(r["집단"]),
-            "끊긴 날": f"{int(r['끊김일수'])}일" if broken else "—",
-            "대면 발길 최저": signed(r["대면_7일최저_pct"]) if broken else "—",
-            "필수 발길 최저": signed(r["필수_7일최저_pct"]) if broken else "—",
-            "평소 닿던 업종": ui.esc(r["상대방업종"]) if broken else "—",
+            # 칸을 여섯으로 — 보조 정보(날씨 · 끊긴 날)는 둘째 줄로 내려 좁은 폭에서도 글자가 쪼개지지 않게
+            "신호 · 날씨 가능": ui.badge(SHORT[r["신호"]], color) + wx,
+            "집단": ui.esc(r["집단"]) + (f"<span class='sm'>끊긴 날 {int(r['끊김일수'])}일</span>" if broken else ""),
+            "발길 최저": (f"대면 {signed(r['대면_7일최저_pct'])}<span class='sm' style='color:inherit'>필수 "
+                       f"{signed(r['필수_7일최저_pct'])}</span>") if broken else "—",
+            "평소 닿던 업종": _items(r["상대방업종"], stack=True) if broken and r["상대방업종"] else "—",
             # agent.py가 낸 문구를 그대로 쓴다(브리핑과 갈리지 않게). 열이 없는 옛 표에서만 화면 규칙으로
             "다음 행동": ui.esc(r["다음행동"] if r.get("다음행동") else next_action(r, int(same.get(r["도시"], 0)))),
             "_calm": r["신호"] == "초록",
         })
-    cols = [("신호", ""), ("집단", ""), ("끊긴 날", "n"), ("대면 발길 최저", "n"), ("필수 발길 최저", "n")]
-    cols += [("날씨 가능", "m")] if has_wx else []
-    html(ui.table(cols + [("평소 닿던 업종", "m"), ("다음 행동", "m")], rows, dim_key="_calm"))
+    cols = [("신호 · 날씨 가능", "w-sig"), ("집단", "nw"), ("발길 최저", "n nw"), ("평소 닿던 업종", "m nw"), ("다음 행동", "m")]
+    html(ui.table(cols, rows, dim_key="_calm"))
 
 
 # 주 고르기 — 끌어서 맞추는 막대 대신 목록에서 바로 고르고, ◀ ▶로 한 주씩 넘긴다(10/26 현수 의견).
@@ -367,12 +367,21 @@ def _short_places(text: str, dong: str) -> str:
     return re.sub(r"\(가상\) (?:" + re.escape(dong) + r" )?([^()]+?) \(([^()·]+?)(?: · 지정)?\)", short, text)
 
 
+def _items(text: str, stack: bool = False) -> str:
+    """「한식 30% · 약국 20%」 → 항목마다 줄을 바꾸지 않는 덩어리로. 표 칸이 좁아도 「커피전문 / 점」처럼 쪼개지지 않는다.
+    stack이면 한 줄에 하나씩 쌓는다."""
+    parts = [ui.esc(x) for x in text.split(" · ")]
+    if stack:
+        return "".join(f"<span class='it' style='display:block'>{x}</span>" for x in parts)
+    return " · ".join(f"<span class='it'>{x}</span>" for x in parts)
+
+
 def _place(r: pd.Series) -> str:
     # 본인이 등록한 곳이 있으면 그곳 하나, 없으면 그 동의 후보 (agent.py place_candidates)
     if r.get("등록장소"):
-        return f"<b>본인 등록</b> {ui.esc(_short_places(r['등록장소'], r['행정동']))}"
+        return f"<b>본인 등록</b><span class='sm' style='color:inherit'>{_items(_short_places(r['등록장소'], r['행정동']), stack=True)}</span>"
     if r.get("후보장소"):
-        return f"<span style='color:{ui.MUTE}'>후보</span> {ui.esc(_short_places(r['후보장소'], r['행정동']))}"
+        return f"후보<span class='sm' style='color:inherit'>{_items(_short_places(r['후보장소'], r['행정동']), stack=True)}</span>"
     return "—"
 
 
@@ -406,8 +415,8 @@ def _window_cell(text: str) -> str:
     # 3배 규칙이 보이게 — 「경로당 9곳」만으로는 왜 가게 쪽인지 알 수 없다(SHOP_PER_CENTER = 3)
     cn = _re_first_int(centers_txt)
     right = f"{centers_txt} × 3 = {cn * 3:,}곳" if cn is not None else centers_txt
-    out = f"{mark(total, win == '가게')} ↔ {mark(right, win != '가게')}"
-    return out + (f"<div style='color:{ui.MUTE};font-size:.86em'>{ui.esc(detail)}</div>" if detail else "")
+    out = f"<span class='it'>{mark(total, win == '가게')}</span> <span class='it'>↔ {mark(right, win != '가게')}</span>"
+    return out + (f"<span class='sm'>{_items(detail)}</span>" if detail else "")
 
 
 def person_row(r: pd.Series, sig: str) -> str:
@@ -454,17 +463,18 @@ def people_table(p: pd.DataFrame, g: pd.DataFrame):
         label, color = SIGNAL[g.set_index("집단").loc[r["집단"], "신호"]]
         n = n_cell.get(r["집단"])
         rows.append({
-            "신호": ui.badge(label.split(" · ")[0], color),
-            "집단 (칸 인원)": ui.esc(r["집단"]) + (f" <span style='color:{ui.MUTE}'>({int(n)}명 중)</span>" if pd.notna(n) else ""),
-            "대상자": ui.esc(r["대상자ID"]) + f" <span style='color:{ui.MUTE}'>{ui.esc(r['명부종류'])}</span>",
-            "마지막 접촉": f"<span style='white-space:nowrap'>{int(r['경과일'])}일 전</span>",
-            "주소 동 · 터전 약한 순": f"{ui.esc(r['행정동'])} · {int(r['터전순위'])}/{N_DONG.get(city, '')}",
-            "먼저 물을 창구": ui.esc(r["창구"]),
-            "창구 판단 — 가게 ↔ 경로당": _window_cell(r["물어볼곳"]),
+            # 칸을 여섯으로 — 신호는 대상자 ID 색으로, 창구 판단 근거는 창구 아래 둘째 줄로
+            "대상자": (f"<span class='bg-badge' style='background:{ui.tint(color, .14)};color:{color};font-weight:800'>"
+                    f"{ui.esc(r['대상자ID'])}</span><span class='sm'>{ui.esc(r['명부종류'])}</span>"),
+            "집단 · 주소 동": ui.esc(r["집단"]) + (f" <span style='color:{ui.MUTE};font-size:12px'>칸 {int(n)}명 중</span>"
+                                             if pd.notna(n) else "")
+                         + (f"<span class='sm'><span class='it'>{ui.esc(r['행정동'])}</span> · "
+                            f"<span class='it'>터전 {int(r['터전순위'])}/{N_DONG.get(city, '')}(약한 순)</span></span>"),
+            "마지막 접촉": f"{int(r['경과일'])}일 전",
+            "먼저 물을 창구": f"<b>{ui.esc(r['창구'])}</b><span class='sm'>{_window_cell(r['물어볼곳'])}</span>",
             "물어볼 장소 (가상 가게)": _place(r) if has_place else "",
         })
-    cols = [("신호", ""), ("집단 (칸 인원)", ""), ("대상자", ""), ("마지막 접촉", "n"),
-            ("주소 동 · 터전 약한 순", ""), ("먼저 물을 창구", ""), ("창구 판단 — 가게 ↔ 경로당", "m")]
+    cols = [("대상자", ""), ("집단 · 주소 동", ""), ("마지막 접촉", "n nw"), ("먼저 물을 창구", "w-win")]
     html(ui.table(cols + ([("물어볼 장소 (가상 가게)", "m")] if has_place else []), rows))
 
 

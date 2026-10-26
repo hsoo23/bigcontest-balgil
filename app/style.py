@@ -92,7 +92,15 @@ div.st-key-card, div[class*="st-key-card"] {{
   border:1px solid {HAIRLINE}; border-radius:12px; overflow:hidden; box-shadow: rgba(0,55,112,0.08) 0 1px 3px; }}
 .bg-table th {{ text-align:left; font-size:12px; font-weight:500; color:{MUTE}; padding:10px 14px;
   background:{CANVAS_SOFT}; border-bottom:1px solid {HAIRLINE}; letter-spacing:-0.1px; }}
-.bg-table td {{ font-size:14px; color:{INK}; padding:10px 14px; border-bottom:1px solid {HAIRLINE}; }}
+.bg-table td {{ font-size:14px; color:{INK}; padding:12px 12px; border-bottom:1px solid {HAIRLINE}; vertical-align:top;
+  line-height:1.5; word-break:keep-all; overflow-wrap:break-word; }}
+.bg-table th {{ vertical-align:bottom; word-break:keep-all; }}
+.bg-table .nw {{ white-space:nowrap; }}                 /* 짧은 칸(신호·집단·숫자)은 줄을 바꾸지 않는다 */
+.bg-table .it {{ white-space:nowrap; }}                 /* 「한식 30%」처럼 목록 한 항목은 한 덩어리로 */
+.bg-table .sm {{ display:block; font-size:12px; color:{MUTE}; margin-top:2px; }}
+.bg-tablewrap {{ overflow-x:auto; }}
+.bg-table td.w-sig {{ min-width:120px; }} .bg-table td.w-win {{ min-width:180px; }}
+.bg-table .sm .sm {{ display:block; margin-top:2px; }}
 .bg-table tr:last-child td {{ border-bottom:none; }}
 .bg-table td.n, .bg-table th.n {{ text-align:right; font-feature-settings:"tnum"; letter-spacing:-0.3px; }}
 .bg-table td.m {{ color:{MUTE}; font-size:13px; }}
@@ -327,13 +335,16 @@ def badge(text: str, color: str) -> str:
 
 
 def table(columns: list[tuple[str, str]], rows: list[dict], dim_key: str | None = None) -> str:
-    """columns: [(제목, 'n'=숫자 오른쪽 정렬 | 'm'=흐린 글자 | '')]. 값에 HTML을 넣으려면 미리 만들어 둔다."""
+    """columns: [(제목, 'n'=숫자 오른쪽 정렬 | 'm'=흐린 글자 | 'nw'=줄 바꾸지 않음 | '', 띄어 써서 겹쳐도 된다)].
+    값에 HTML을 넣으려면 미리 만들어 둔다 — 둘째 줄은 <span class='sm'>, 목록 항목은 <span class='it'>."""
     head = "".join(f"<th class='{c}'>{esc(t)}</th>" for t, c in columns)
     body = []
     for r in rows:
         cls = " class='dim'" if dim_key and r.get(dim_key) else ""
         body.append(f"<tr{cls}>" + "".join(f"<td class='{c}'>{r[t]}</td>" for t, c in columns) + "</tr>")
-    return f"<table class='bg-table'><thead><tr>{head}</tr></thead><tbody>{''.join(body)}</tbody></table>"
+    # 칸이 좁으면 글자를 쪼개지 말고 옆으로 밀리게 — 넘치면 표만 가로로 스크롤된다
+    return (f"<div class='bg-tablewrap'><table class='bg-table'><thead><tr>{head}</tr></thead>"
+            f"<tbody>{''.join(body)}</tbody></table></div>")
 
 
 def legend(items: list[tuple[str, str]]) -> str:
