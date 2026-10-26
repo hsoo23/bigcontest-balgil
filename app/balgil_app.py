@@ -717,10 +717,11 @@ def map_answer(g: gpd.GeoDataFrame, city: str, col: str | None, label: str, quad
     names = " · ".join(ui.esc(x) for x in first["ADM_NM"])
     return ui.answer(
         f"{city} · 자원을 어디에 먼저",
-        f"<b>{names}</b>부터 두세요. 공급 부족 동 가운데 무작위로 3곳을 고를 때보다 "
-        f"고령 1인세대에 <b>{r[3]:.2f}배</b> 닿습니다.",
-        f"공급 부족 {int(short.sum())}개 동에 {city} 고령 1인세대의 {share:.1f}%가 삽니다 · "
-        f"형평 칸 {n_eq}곳은 사람이 적어도 다른 길이 없어 찾아가는 형태로 둡니다")
+        f"<b>{names}</b>에 먼저 두세요 — 고령 1인세대가 <b>{r[3]:.2f}배</b> 많이 삽니다",
+        # 배수는 도달 효율(06_터전 6.5) — 공급 부족 동에서 3곳을 무작위로 고를 때의 기댓값과 견준다
+        f"공급 부족 동 가운데 3곳을 무작위로 고를 때와 견준 값입니다 · "
+        f"공급 부족 {int(short.sum())}개 동에 {city} 고령 1인세대의 {share:.1f}%가 삽니다<br>"
+        f"형평 칸 {n_eq}곳은 사는 사람은 적지만 달리 닿을 곳이 없어, 찾아가는 서비스로 챙깁니다")
 
 
 def map_metric_side(g: gpd.GeoDataFrame, city: str, col: str, label: str):
