@@ -72,11 +72,9 @@ COVER = """# 발길 — 고립은 발길이 좁아지고 끊기는 일이다
 
 사회적 고립 예방 및 대응을 위한 AI 에이전트 — 분석보고서
 
-> **본 제출물은 발표자료이고 이 보고서는 기타자료(상세판)입니다.** 같은 절 번호를 씁니다.
->
-> 이 보고서의 모든 수치는 `docs/최종수치표.md` 한 곳에서 나옵니다. 재현 방법은 절마다
-> 「재현」 줄에 적었고, 코드는 제출한 재현 코드에 들어 있습니다. `#숫자`는 저장소 이슈 번호로,
-> 그 판단을 어디서 정했는지 가리킵니다.
+이 보고서는 발표자료의 상세판으로 제출하는 기타자료이며, 발표자료와 같은 절 번호를 씁니다. 모든 수치는
+`docs/최종수치표.md` 한 곳에서 가져왔습니다. 재현 방법은 절마다 「재현」 줄에 적었고, 코드는 제출한 재현
+코드에 들어 있습니다.
 """
 
 
@@ -92,8 +90,7 @@ table { border-collapse: collapse; width: 100%; margin: 10px 0 16px; font-size: 
         break-inside: avoid; }
 th, td { border: 1px solid #dcdcda; padding: 5px 8px; text-align: left; vertical-align: top; }
 th { background: #eef2f7; }
-blockquote { margin: 12px 0; padding: 8px 14px; border-left: 3px solid #cde2fb;
-             background: #fafafa; color: #333; break-inside: avoid; }
+blockquote { margin: 0; padding: 0; border: none; background: none; color: inherit; }  /* 팀 판(10/26): 상자 없이 본문처럼 */
 code { background: #f2f2f0; padding: 1px 4px; border-radius: 3px; font-size: 9pt; }
 pre { background: #f6f6f4; padding: 10px 12px; overflow-x: auto; font-size: 9pt;
       break-inside: avoid; }
