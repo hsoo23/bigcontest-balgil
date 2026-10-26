@@ -311,10 +311,6 @@ div.st-key-card, div[class*="st-key-card"], .bg-board, .bg-tl, .bg-res, .bg-hero
 .bg-pill2 {{ border-color:{HAIRLINE}; border-radius:9999px; }}
 .bg-steps .bg-step {{ background:#faf6f2; border-color:{HAIRLINE}; border-radius:16px; }}
 .bg-steps .bg-step.on {{ background:{LAVENDER_SOFT}; border-color:#d9cffb; }}
-.bg-theme {{ margin-top:14px; display:flex; flex-wrap:wrap; align-items:center; gap:6px; font-size:12px; color:{MUTE}; padding:0 4px; }}
-.bg-theme span {{ flex-basis:100%; margin-bottom:2px; }}
-.bg-theme a {{ white-space:nowrap; padding:4px 10px; border-radius:9999px; border:1px solid {HAIRLINE}; color:{INK_2} !important; text-decoration:none !important; }}
-.bg-theme a.on {{ background:{PEACH}; border-color:transparent; color:#fff !important; }}
 </style>
 """
 
@@ -424,18 +420,14 @@ def trail_svg() -> str:
     return (f'<svg viewBox="0 0 220 150" width="170"><circle cx="140" cy="78" r="62" fill="{PRIMARY_SOFT_BG}"/>{g}</svg>')
 
 
-def sidebar(active: int, items: list[tuple[str, str]], theme: str = "") -> str:
-    t = f"&theme={theme}"
-    nav = "".join(f'<a href="?screen={i}{t}" target="_self" class="{"on" if i == active else ""}">{icon(ic)}{esc(t_)}</a>'
+def sidebar(active: int, items: list[tuple[str, str]]) -> str:
+    nav = "".join(f'<a href="?screen={i}" target="_self" class="{"on" if i == active else ""}">{icon(ic)}{esc(t_)}</a>'
                   for i, (t_, ic) in enumerate(items, 1))
-    sw = "".join(f'<a href="?screen={active}&theme={k}" target="_self" class="{"on" if k == theme else ""}">{v}</a>'
-                 for k, v in THEMES.items())
     return (f'<div class="bg-logo">{logo_svg(42)}<div><div class="t">발길</div><div class="s">고립 조기 발견 에이전트</div></div></div>'
             f'<div class="bg-navh">담당자 화면</div><div class="bg-nav">{nav}</div>'
             f'<div class="bg-side-note"><b>시연용 화면</b>집단 지표는 실제 분석 결과(신한카드·SK·상가·공공데이터)이고, '
             f'개인 단위 사례는 모두 <u>가상</u>입니다. 수치는 최종 수치표와 같습니다.</div>'
-            f'<div class="bg-team"><i>또</i><div>또커톤<span>빅콘테스트 2026</span></div></div>'
-            f'<div class="bg-theme"><span>화면 색</span>{sw}</div>')
+            f'<div class="bg-team"><i>또</i><div>또커톤<span>빅콘테스트 2026</span></div></div>')
 
 
 def topbar(title: str, sub: str, pill: str = "", pill_icon: str = "calendar") -> str:
@@ -474,67 +466,8 @@ def timeline(title: str, sub: str, items: list[tuple[str, str, bool]]) -> str:
     return f"<div class='bg-tl'><div class='h'>{esc(title)}</div><div class='hs'>{esc(sub)}</div>{its}</div>"
 
 
-# ── 테마 둘 — 팀이 고르기 전까지 나란히 본다 (?theme=lilac) ─────────────
-THEMES = {"deck": "발표자료", "cream": "크림", "lilac": "라일락", "sky": "하늘"}   # 맨 앞이 기본
-_LILAC = dict(bg="#f4f4f8", card="#ffffff", line="#ebebf2", primary="#7a6ff0", deep="#5f54e0", soft="#efedfd",
-              tiles=["#958cf2", "#ee8f84", "#efa86a", "#59bd8c"])   # 라일락 · 연어 · 살구 · 민트 (흰 글자 3:1 안팎)
-LILAC_TEMPLATE = ("""<style>
-.stApp {{ background:{bg} !important; }}
-[data-testid="stSidebar"] {{ background:{card} !important; border-right:1px solid {line} !important; }}
-.bg-logo svg circle, .bg-logo svg rect {{ fill:{primary} !important; }}
-.bg-logo .t {{ color:#22213a; }}
-.bg-nav a {{ color:#6b6a85 !important; }}
-.bg-nav a:hover {{ background:{bg}; color:#22213a !important; }}
-.bg-nav a.on {{ background:{soft} !important; color:{primary} !important; box-shadow:none !important; }}
-.bg-side-note {{ background:{primary} !important; color:#fff !important; border:none !important; border-radius:18px !important; }}
-.bg-side-note b {{ color:#fff !important; }} .bg-side-note u {{ text-decoration-color:#fff !important; }}
-.bg-team {{ background:{card} !important; border:1px solid #d9d5fb !important; }}
-.bg-team i {{ background:{soft} !important; color:{primary} !important; }}
-.bg-theme a.on {{ background:{primary} !important; color:#fff !important; }}
-
-div.st-key-card, div[class*="st-key-card"], .bg-board, .bg-tl, .bg-res, .bg-heroc, .bg-table, [data-testid="stExpander"] details {{
-  background:{card} !important; border-radius:18px !important; box-shadow: rgba(40,40,90,0.06) 0 4px 16px !important; }}
-.bg-heroc {{ background:{card} !important; }}
-.bg-heroc .t b {{ color:{primary} !important; }}
-.bg-heroc .art svg circle {{ fill:{soft} !important; }}
-.bg-table th {{ background:#f7f7fb !important; }}
-
-.bg-kpi {{ display:grid !important; grid-template-columns:40px minmax(0, 1fr); grid-template-rows:auto auto auto;
-  column-gap:14px; row-gap:0; align-items:center; align-content:center; justify-items:start; text-align:left;
-  border:none !important; box-shadow:none !important;
-  border-radius:18px !important; padding:16px 14px !important; column-gap:12px !important; }}
-.bg-kpi .ic {{ grid-column:1; grid-row:1 / span 3; width:40px !important; height:40px !important; border-radius:50% !important;
-  margin:0 !important; background:rgba(255,255,255,.22) !important; background-image:none !important; box-shadow:none !important;
-  border:2px solid rgba(255,255,255,.85); }}
-.bg-kpi .v {{ grid-column:2; grid-row:1; }}
-.bg-kpi .l {{ grid-column:2; grid-row:2; margin:3px 0 0 !important; white-space:normal !important; word-break:keep-all; line-height:1.3; }}
-.bg-kpi .d {{ grid-column:2; grid-row:3; }}
-.bg-kpi .v, .bg-kpi .v small, .bg-kpi .l, .bg-kpi .d {{ color:#fff !important; }}
-.bg-kpi .v {{ font-size:26px !important; }}
-.bg-kpi .l {{ margin:2px 0 0 !important; }}
-.bg-kpi .d {{ opacity:.92; }}
-""" + "".join(f".bg-kpis .bg-kpi:nth-child({i + 1}) {{{{ background:{c} !important; }}}}\n" for i, c in enumerate(_LILAC["tiles"])) + """
-.bg-tl .box {{ background:#f7f7fb !important; border-left-color:{line} !important; }}
-.bg-tl .it.on .box {{ background:{soft} !important; border-left-color:{primary} !important; }}
-.bg-tl .it.on .n {{ background:{primary} !important; border-color:{primary} !important; }}
-.bg-tile {{ background:#f7f7fb; }}
-.bg-chip {{ background:#f7f7fb !important; border-color:{line} !important; }}
-.bg-steps .bg-step {{ background:#f7f7fb !important; border-color:{line} !important; }}
-.bg-steps .bg-step.on {{ background:{soft} !important; border-color:#d9d5fb !important; }}
-.bg-steps .bg-step.on .n {{ background:{primary} !important; border-color:{primary} !important; }}
-[data-testid="stSlider"] [role="slider"] {{ background:{primary} !important; }}
-</style>""")
-LILAC_CSS = LILAC_TEMPLATE.format(**_LILAC)
-# 「하늘」 — 라일락에서 연보라 부분만 연하늘(#d3e4f5)로. 그 위의 보라 글자 · 아이콘 · 첫 타일도 같은 계열 하늘로 맞춘다
-_SKY = dict(_LILAC, primary="#4f8fcf", deep="#3a78b8", soft="#d3e4f5",
-            tiles=["#5b9bd5"] + _LILAC["tiles"][1:])
-# 타일 색은 틀에 라일락 값으로 박혀 있어 첫 칸만 바꿔 끼운다
-SKY_CSS = (LILAC_TEMPLATE.format(**_SKY).replace(_LILAC["tiles"][0], _SKY["tiles"][0])
-           .replace("</style>", ".bg-heroc .art svg g {{ fill:{p} !important; }}\n</style>".format(p=_SKY["primary"])))
-
-
 # 발표자료(발길_발표자료_최종.pdf)와 같은 색 — 짙은 남색 · 하늘색 · 옅은 하늘색. 모양(둥근 모서리 · 옅은 그림자 ·
-# 둥근 글꼴 · 채운 타일)은 크림 · 라일락과 같게 두고 색만 바꾼다. 그라데이션은 쓰지 않는다
+# 둥근 글꼴 · 채운 타일)은 위 기본 틀을 그대로 두고 색만 덮는다(10/26 팀 확정). 그라데이션은 쓰지 않는다
 _DECK = dict(navy="#0a2647", navy2="#16395f", sky="#6cb5ea", sky_d="#3d8fd1", sky_m="#cfe5f7", pale="#eaf4fc",
              bg="#f3f7fb", line="#e1e9f2", ink="#0a2647", mute="#5d6f86")
 DECK_CSS = ("""<style>
@@ -550,9 +483,6 @@ DECK_CSS = ("""<style>
 .bg-side-note b {{ color:{sky} !important; }} .bg-side-note u {{ text-decoration-color:{sky} !important; }}
 .bg-team {{ background:{navy2} !important; border:none !important; color:#fff !important; }}
 .bg-team i {{ background:{sky} !important; color:{navy} !important; }} .bg-team span {{ color:#8ea3bd !important; }}
-.bg-theme {{ color:#8ea3bd !important; }}
-.bg-theme a {{ border-color:#2f5680 !important; color:#d5dfeb !important; }}
-.bg-theme a.on {{ background:{sky} !important; color:{navy} !important; border-color:{sky} !important; }}
 
 .bg-top .t, .bg-sec {{ color:{ink} !important; }}
 .bg-top .s, .bg-sec span {{ color:{mute} !important; }}
@@ -572,7 +502,7 @@ div.st-key-card, div[class*="st-key-card"], .bg-board, .bg-tl, .bg-res, .bg-tabl
 .bg-heroc .bg-step.on .h, .bg-heroc .bg-step.on .d {{ color:{navy} !important; }}
 .bg-heroc .bg-step.on .n {{ background:{navy} !important; border-color:{navy} !important; color:#fff !important; }}
 
-/* 숫자 타일 — 라일락과 같은 꼴(왼쪽 아이콘 원 + 오른쪽 숫자), 색만 남색 · 하늘 · 옅은 하늘 */
+/* 숫자 타일 — 왼쪽 아이콘 원 + 오른쪽 숫자, 색은 남색 · 하늘 · 옅은 하늘 */
 .bg-kpi {{ display:grid !important; grid-template-columns:40px minmax(0, 1fr); grid-template-rows:auto auto auto;
   column-gap:12px !important; row-gap:0; align-items:center; align-content:center; justify-items:start; text-align:left;
   border:none !important; box-shadow:none !important; border-radius:20px !important; padding:16px 14px !important; }}
