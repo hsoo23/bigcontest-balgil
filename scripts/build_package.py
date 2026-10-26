@@ -54,7 +54,7 @@ DESIGN = [("발길_E5_가상데이터생성설계자료", ROOT / "docs" / "draft
           ("발길_E6_LLM활용설계자료", ROOT / "docs" / "draft" / "E6_LLM활용설계자료.md")]
 
 ELSEWHERE = [("발길_발표자료.pdf", "구글 슬라이드에서 내려받기 — 원고는 reports/발길_발표자료.pptx"),
-             ("발길_분석보고서.pdf", "python scripts/build_pdf.py — 크롬 헤드리스로 뜹니다(6.18MB · 98쪽)"),
+             ("발길_분석보고서.pdf", "python scripts/build_pdf.py — 크롬 헤드리스로 뜹니다(요약판 약 15쪽 · 3MB)"),
              ("발길_E5_가상데이터생성설계자료.pdf", "python scripts/build_pdf.py (0.37MB · 9쪽)"),
              ("발길_E6_LLM활용설계자료.pdf", "python scripts/build_pdf.py (0.24MB · 5쪽)"),
              ("발길_외부데이터원본_상가강원.zip", "이 PC 에 원본이 없습니다. data/external/sbiz_store/ 에 강원 CSV 가 있는 PC(수경·현수)에서 돌리면 여기서 묶입니다"),
@@ -110,7 +110,8 @@ def main() -> None:
     ext = [f for f in files if "data/external/" in f.as_posix()]
     # 따로 첨부로 나가는 제출본은 코드 zip 에 또 넣지 않는다 — PPTX 하나가 2.5MB 다.
     # 그림(reports/figures)은 남긴다. 보고서가 그 파일을 가리키고 다시 그릴 수 있어야 한다
-    out = [f for f in files if f.parent.name == "reports" and f.name.startswith("발길_")]
+    # 단, 상세판 HTML(10/26)은 첨부로 나가지 않으므로 코드 zip 에 넣는다 — 요약판 보고서가 그 파일을 가리킨다
+    out = [f for f in files if f.parent.name == "reports" and f.name.startswith("발길_") and "상세판.html" not in f.name]
     skip = set(ext) | set(out) | {f for f in files if any(s in f.as_posix() for s in CODE_SKIP)}
     code = [f for f in files if f not in skip]
     syn = sorted((ROOT / "data" / "synthetic").glob("*")) if (ROOT / "data" / "synthetic").exists() else []
@@ -132,7 +133,7 @@ def main() -> None:
             p.write_text(to_html(src.read_text(encoding="utf-8")), encoding="utf-8")
             made.append((p.name, p, 1))
 
-    for extra in ["발길_분석보고서.html", "발길_발표자료.pptx"]:
+    for extra in ["발길_분석보고서.html", "발길_분석보고서_상세판.html", "발길_발표자료.pptx"]:
         p = ROOT / "reports" / extra
         if p.exists():
             made.append((extra + "  (reports/)", p, 1))

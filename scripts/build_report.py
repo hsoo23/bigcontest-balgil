@@ -43,6 +43,11 @@ ROOT = Path(__file__).resolve().parents[1]
 DRAFT = ROOT / "docs" / "draft"
 OUT = ROOT / "reports" / "발길_분석보고서.md"
 HTML_OUT = ROOT / "reports" / "발길_분석보고서.html"
+# 10/26 — 제출하는 보고서는 20쪽 안의 요약판이다. 심사위원이 끝까지 읽을 수 있는 길이로, 절 번호는 발표자료와 같다.
+# 열한 절을 다 묶은 긴 판은 「상세판」으로 따로 만들어 재현 코드 zip에 넣는다(근거·쓰지 않는 문장·수치 출처)
+SHORT_SRC = DRAFT / "요약보고서.md"
+FULL_OUT = ROOT / "reports" / "발길_분석보고서_상세판.md"
+FULL_HTML_OUT = ROOT / "reports" / "발길_분석보고서_상세판.html"
 
 SECTIONS = ["01_문제", "02_지표", "03_데이터", "04_분석근거", "05_모델링", "06_터전",
             "07_에이전트", "08_시나리오화면", "09_영향력실현가능성", "10_한계"]
@@ -203,14 +208,32 @@ def main() -> None:
     doc = COVER + "\n## 목차\n\n" + "\n".join(items) + "\n\n---\n\n"
     doc += "\n\n---\n\n".join(parts[1:]) + "\n"
 
+    # 요약판 — 한 파일 원고. 절마다 새 쪽으로 넘기지 않아 빈자리를 줄인다(20쪽 안)
+    short_body = SHORT_SRC.read_text(encoding="utf-8")
+    for m in re.finditer(r"!\[[^\]]*\]\(([^)]+)\)", short_body):
+        if not (OUT.parent / m.group(1)).exists():
+            warn.append(f"{SHORT_SRC.name}: 그림 파일이 없습니다 {m.group(1)}")
+    short_toc = [l[2:].strip() for l in short_body.splitlines() if l.startswith("# ")]
+    short_cover = re.sub(r"이 보고서는 발표자료의 상세판으로.*?들어 있습니다\.", (
+        "이 보고서는 발표자료의 설명을 보태는 기타자료이며, 발표자료와 같은 절 번호를 씁니다. 모든 수치는 "
+        "`docs/최종수치표.md` 한 곳에서 가져왔습니다. 절마다의 상세 근거와 재현 명령은 재현 코드 zip의 "
+        "상세판(`reports/발길_분석보고서_상세판.html`)에 있습니다."), COVER, flags=re.S)
+    short = short_cover + "\n## 목차\n\n" + "\n".join("- " + dot(t) for t in short_toc) + "\n\n---\n\n" + short_body
+
     if not a.check:
         OUT.parent.mkdir(parents=True, exist_ok=True)
-        OUT.write_text(doc, encoding="utf-8")
-        print(f"저장: {OUT.relative_to(ROOT)}  —  {len(SECTIONS)}절 · {len(doc.splitlines()):,}줄 · {len(doc):,}자")
+        FULL_OUT.write_text(doc, encoding="utf-8")
+        OUT.write_text(short, encoding="utf-8")
+        print(f"저장: {OUT.relative_to(ROOT)}  —  요약판 · {len(short):,}자")
+        print(f"저장: {FULL_OUT.relative_to(ROOT)}  —  상세판 {len(SECTIONS)}절 · {len(doc.splitlines()):,}줄 · {len(doc):,}자")
         if a.html:
-            html = to_html(doc)
+            FULL_HTML_OUT.write_text(to_html(doc), encoding="utf-8")
+            html = to_html(short).replace("break-before: page;", "break-before: auto; margin-top: 30px;")
+            # 제목이 쪽 끝에 혼자 남지 않게 — 절이 이어지는 요약판에서만 생긴다
+            html = html.replace("</style>", "h1, h2, h3 { break-after: avoid; page-break-after: avoid; }\n"
+                                "figure, p:has(> img) { break-inside: avoid; }\n</style>", 1)
             HTML_OUT.write_text(html, encoding="utf-8")
-            print(f"저장: {HTML_OUT.relative_to(ROOT)}  —  브라우저에서 열어 [인쇄 → PDF로 저장]")
+            print(f"저장: {HTML_OUT.relative_to(ROOT)} · {FULL_HTML_OUT.relative_to(ROOT)}")
     else:
         print(f"확인만 했습니다 — {len(SECTIONS)}절 · {len(doc.splitlines()):,}줄")
     print("걷어낸 것: " + " · ".join(f"{k} {v}" for k, v in total.items()))
