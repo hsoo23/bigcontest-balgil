@@ -191,6 +191,10 @@ hr {{ border-color: {HAIRLINE} !important; }}
 .bg-nav a:hover {{ background:{CANVAS_SOFT}; color:{INK} !important; }}
 .bg-nav a.on {{ background:{PRIMARY_SOFT_BG}; color:{PRIMARY} !important; font-weight:600; }}
 .bg-nav a svg {{ width:20px; height:20px; flex:none; }}
+/* 팀 카드는 메뉴 맨 아래에 붙인다 — 기준 상자를 사이드바 전체(stSidebarContent)로 두려고 중간 상자의 relative를 푼다.
+   창이 낮으면 메뉴와 겹치므로 원래 자리(메뉴 바로 아래)로 돌아간다 */
+[data-testid="stSidebar"] [data-testid="stElementContainer"]:has(.bg-team) {{ position:static; }}
+@media (min-height:620px) {{ .bg-team {{ position:absolute; left:20px; right:20px; bottom:24px; margin-top:0 !important; }} }}
 .bg-team {{ margin-top:28px; border:1px solid {HAIRLINE}; border-radius:14px; padding:10px 12px; display:flex; align-items:center; gap:10px; font-size:13px; }}
 .bg-team i {{ width:30px; height:30px; border-radius:50%; background:{PRIMARY_SOFT_BG}; display:flex; align-items:center; justify-content:center; font-style:normal; font-weight:700; color:{PRIMARY}; }}
 .bg-team span {{ display:block; font-size:11px; color:{MUTE}; }}
@@ -439,7 +443,7 @@ def sidebar(active: int, items: list[tuple[str, str]]) -> str:
     nav = "".join(f'<a href="?screen={i}" target="_self" class="{"on" if i == active else ""}">{icon(ic)}{esc(t_)}</a>'
                   for i, (t_, ic) in enumerate(items, 1))
     return (f'<div class="bg-logo">{logo_svg(42)}<div><div class="t">발길</div><div class="s">고립 조기 발견 에이전트</div></div></div>'
-            f'<div class="bg-navh">담당자 화면</div><div class="bg-nav">{nav}</div>'
+            f'<div class="bg-navh">메뉴</div><div class="bg-nav">{nav}</div>'
             f'<div class="bg-team"><i>또</i><div>또커톤<span>빅콘테스트 2026</span></div></div>')
 
 
