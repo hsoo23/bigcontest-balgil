@@ -1,6 +1,6 @@
-"""발표 0 · 1 · 2 · 8 · 14 · 15장 그림 — 윤지 몫 여섯 장을 한 번에 만든다.
+"""발표 0 · 1 · 2 · 8 · 14 · 15장 그림 — 모델·통합 쪽 여섯 장을 한 번에 만든다.
 
-수경 님 `fig_slide_tables.py`와 같은 틀이다(글꼴 선택 · 색 상수 · 「PNG는 만든 사람만 커밋」).
+`fig_slide_tables.py`와 같은 틀이다(글꼴 선택 · 색 상수 · 「PNG는 만든 사람만 커밋」).
 칸의 글은 발표자료 슬라이드의 **그림 명세**와 보고서에서 그대로 옮긴다. 새로 만든 숫자는 없다.
 
   0장 fig_cover.png        발길 한 쌍이 좁아지다 끊기는 선 — 글자 없이 선으로만
@@ -25,7 +25,7 @@
       (둘 다 저장소에 있음 — 원본 없이 그려진다)
 출력: reports/figures/fig_cover.png · fig_problem_venn.png · fig_four_faces.png ·
       fig_model_shap.png · fig_substitute.png · fig_limits.png
-실행: python scripts/fig_slide_yoonji.py
+실행: python scripts/fig_slide_model.py
 
 PNG는 바이트로는 재현되지 않는다 — PC마다 글꼴 렌더링이 달라 픽셀 몇백 개가 다르다.
 그래서 **한 사람이 만들어 커밋하고, 다른 PC에서는 다시 만들어 커밋하지 않는다**(#72).
