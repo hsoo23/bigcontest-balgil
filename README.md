@@ -6,7 +6,9 @@
 
 발길을 재면 **확인해 줄 사람이 같이 나온다**는 것이 이 기획의 전부입니다 — 발길이 어디로 향했는지 알면 그 자리에 있는 사람(단골 가게·경로당)이 누구인지도 알기 때문입니다. 위험도만 내는 지표에는 없는 성질입니다.
 
-![담당자 화면 넷](reports/figures/fig_screens_grid.png)
+[![담당자 화면 넷](reports/figures/fig_screens_grid.png)](reports/figures/fig_screens_grid.png)
+
+<sub>담당자 화면 넷 — **눌러서 원본 크기로** 보세요. 글자까지 읽으려면 [화면 캡처 원본](reports/screens)이 낫습니다.</sub>
 
 **바로 보기** — 받지 않고 읽을 수 있습니다.
 
@@ -22,12 +24,14 @@
 
 ## 무엇이 달라지나
 
-| | 지금 | 발길 | 재현 |
+| | 지금 | 발길 | 어디서 나온 값인가 |
 |---|---|---|---|
-| **언제 아나** | 격월 탐색 — 끊긴 뒤 평균 **31.5일** | 주간 루프 — **3.0일** (**28.5일 빠름**) | `scripts/explore_earliness.py` |
-| **누구부터 보나** | 경제 지표 상위부터 | 발길이 **좁아질 집단을 한 주 먼저** — 새로 좁아지는 31건 중 **18건** (기준선 0건) | `reanalysis/b3_models.py` |
-| **헛알림** | 명절·궂은 날에 무더기로 | 같은 도시 30·40대의 공통 감소를 빼서 **131 → 44건** (명절 주간 105 → 26) | `reanalysis/b2_continuity.py` |
-| **어디에 먼저** | — | 공급 부족 동 안에서 고령 1인세대 많은 순 — 무작위 대비 **1.44~1.80배** | `scripts/build_priority.py` |
+| **언제 아나** | 격월 탐색 — 끊긴 뒤 평균 **31.5일** | 주간 루프 — **3.0일** (**28.5일 빠름**) | [`closure.csv`](reanalysis/reference/closure.csv) 끊김 14건 · [수치표 6절](docs/최종수치표.md) |
+| **누구부터 보나** | 경제 지표 상위부터 | 발길이 **좁아질 집단을 한 주 먼저** — 새로 좁아지는 31건 중 **18건** (기준선 0건) | [`model_score.csv`](reanalysis/reference/model_score.csv) |
+| **헛알림** | 명절·궂은 날에 무더기로 | 같은 도시 30·40대의 공통 감소를 빼서 **131 → 44건** (명절 주간 105 → 26) | [`false_alarm.csv`](reanalysis/reference/false_alarm.csv) |
+| **어디에 먼저** | — | 공급 부족 동 안에서 고령 1인세대 많은 순 — 무작위 대비 **1.44~1.80배** | [`reach_efficiency.csv`](data/reference/reach_efficiency.csv) |
+
+**넷 다 저장소에 커밋돼 있어 받자마자 열어 볼 수 있습니다.** 그 파일을 만드는 파이프라인은 제공 데이터가 있어야 돕니다(아래 「원본 데이터 없이 되는 것」).
 
 **한계도 같이 적습니다.** 6개월·두 도시 자료라 계절 한 바퀴를 못 봤고, 새로 좁아진 칸 31건은 소표본입니다. 「기존 체계 보완율」은 동 단위 공개 경제 지표를 구하지 못해 **내지 못했습니다.** 전부 보고서 10절에 있습니다.
 
@@ -40,9 +44,7 @@
 | **연속성** | 늘 가던 대로 가는가 | 지난 7일 결제가 평소 흔들림의 **3배** 넘게 줄었나 | 집단 |
 | **터전** | 닿을 곳이 있는가 | 고령 유동·저녁·일요일·겨울 유지의 도시 안 순위 평균 | 동 |
 
-![발길 네 면](reports/figures/fig_four_faces.png)
-
-집단은 **시군구 × 성 × 연령 36칸**, 동은 **행정동 47칸**(강남 22 · 춘천 25)입니다. **카드는 시군구까지만 내려가므로 카드 지표를 동에 붙이지 않습니다.**
+네 면을 한 장으로 본 [도식](reports/figures/fig_four_faces.png)도 있습니다. 집단은 **시군구 × 성 × 연령 36칸**, 동은 **행정동 47칸**(강남 22 · 춘천 25)입니다. **카드는 시군구까지만 내려가므로 카드 지표를 동에 붙이지 않습니다.**
 
 ## 모델 — 한 주 먼저 잡는 쪽으로
 
@@ -56,9 +58,7 @@
 
 **늘어난 경보도 같이 적습니다** — 175 → 202건입니다. 31건은 소표본이라 성능을 인용할 때마다 표본 수를 같은 줄에 적었습니다.
 
-![모델 성능과 SHAP](reports/figures/fig_model_shap.png)
-
-판단 근거는 SHAP으로 확인했습니다. 1·2위가 3주 이동평균과 이번 주 좁아짐이라 **좁아짐은 수준보다 추세로 잡힙니다.** 다만 **모델 입력 11개가 전부 카드 쪽이라 터전(동 단위)은 이 막대가 설명하지 못합니다.**
+판단 근거는 **SHAP**으로 확인했습니다([그림](reports/figures/fig_model_shap.png)). 1·2위가 3주 이동평균과 이번 주 좁아짐이라 **좁아짐은 수준보다 추세로 잡힙니다.** 다만 **모델 입력 11개가 전부 카드 쪽이라 터전(동 단위)은 이 막대가 설명하지 못합니다.**
 
 > **「발길 예상」 모델은 기준선을 넘지 못했습니다.** 지난 4주 같은 요일 중앙값보다 중앙값 MAPE가 낮지 않아(6.9 ↔ 7.1), 끊김 판정에 쓰지 않고 **그대로 적었습니다.**
 
@@ -85,9 +85,7 @@
 git clone https://github.com/hsoo23/bigcontest-balgil.git && cd bigcontest-balgil
 python -m venv .venv
 .venv\Scripts\activate                 # Windows  (macOS · Linux: source .venv/bin/activate)
-pip install -r requirements.txt        # Python 3.11+ (geopandas 1.2.0)
-
-pip install -r app/requirements-app.txt
+pip install -r app/requirements-app.txt   # 분석 고정 버전(requirements.txt)을 물고 깔립니다. Python 3.11+
 streamlit run app/balgil_app.py        # 담당자 화면 — 맨 위 그림 넷
 ```
 
